@@ -863,7 +863,7 @@ static int CalcSurfaceTempTerrestial(const SystemBody *star, fixed averageDistTo
 		fixed greenhouse = fixed(0);
 		fixed albedo = fixed(0);
 		// from 0-1 how much ice/clouds can be produced from the atmosphere
-		fixed albedo_ice_effect = amount_volatiles * (amount_volatiles + fixed(1,4));
+		fixed albedo_ice_effect = amount_volatiles / (amount_volatiles + fixed(1,4));
 
 		// CO2 sublimation
 		if (averageTemp > 195) {
