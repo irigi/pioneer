@@ -851,6 +851,69 @@ static int CalcSurfaceTemp(const SystemBody *primary, fixed distToPrimary, fixed
 	return int(isqrt(isqrt((surface_temp_pow4.v>>fixed::FRAC)*4409673)));
 }
 
+static int CalcSurfaceTempTerrestial(const SystemBody *star, fixed averageDistToStar, fixed amount_volatiles) {
+	// black planet with no atmosphere as a start
+	int averageTemp = CalcSurfaceTemp(star, averageDistToStar, fixed(0), fixed(0));
+
+	// give this few iterations to allow multiple-staged greenhouse effect
+	for(int i = 0, prevTemp; i < 10; i++) {
+		// fudge how much of the volatiles are in which state
+		// http://hyperphysics.phy-astr.gsu.edu/hbase/phyopt/albedo.html
+
+		fixed greenhouse = fixed(0);
+		fixed albedo = fixed(0);
+		// from 0-1 how much ice/clouds can be produced from the atmosphere
+		fixed albedo_ice_effect = amount_volatiles * (amount_volatiles + fixed(1,4));
+
+		// CO2 sublimation
+		if (averageTemp > 195) {
+			greenhouse += amount_volatiles * fixed(1,3);
+		} else {
+			albedo += fixed(2,6)*albedo_ice_effect;
+		}
+		// H2O liquid
+		if (averageTemp > 273) {
+			greenhouse += amount_volatiles * fixed(1,5);
+			albedo += fixed(2,6)*albedo_ice_effect; // clouds
+		} else {
+			albedo += fixed(3,6)*albedo_ice_effect; // snow ball
+		}
+		// H2O boils
+		if (averageTemp > 373) {
+			albedo += fixed(1,6)*albedo_ice_effect; // more clouds
+			greenhouse += amount_volatiles * fixed(1,3);
+		}
+
+		// linear at beginning, gradually approach 1 for greenhouse -> infinity
+    	if(greenhouse > 0.7f) {
+        	greenhouse *= greenhouse;
+        	greenhouse *= greenhouse;
+        	greenhouse = greenhouse / (greenhouse + fixed(32,311));
+    	}
+
+		prevTemp = averageTemp;
+		averageTemp = CalcSurfaceTemp(star, averageDistToStar, albedo, greenhouse);
+		if(prevTemp == averageTemp)
+			break;
+	}
+	return averageTemp;
+}
+
+fixed amountGas(fixed amount_volatiles, int averageTemp) {
+    return averageTemp / (fixed(100,1) + averageTemp) * amount_volatiles;
+}
+
+fixed amountLiquid(fixed amount_volatiles, int averageTemp) {
+	fixed aGas = amountGas(amount_volatiles, averageTemp);
+    return (amount_volatiles - aGas) * (averageTemp / (fixed(50,1) + averageTemp)) * amount_volatiles;
+}
+
+fixed amountIces(fixed amount_volatiles, int averageTemp) {
+	fixed aGas = amountGas(amount_volatiles, averageTemp);
+	fixed aLiq = amountGas(amount_volatiles, averageTemp);
+    return (amount_volatiles-aGas-aLiq) * amount_volatiles;
+}
+
 
 double SystemBody::CalcSurfaceGravity() const
 {
@@ -1733,15 +1796,12 @@ const SystemBody *SystemBody::FindStarAndTrueOrbitalRange(fixed &orbMin_, fixed 
 
 void SystemBody::PickPlanetType(MTRand &rand)
 {
-	fixed albedo = fixed(0);
-	fixed greenhouse = fixed(0);
-
 	fixed minDistToStar, maxDistToStar, averageDistToStar;
 	const SystemBody *star = FindStarAndTrueOrbitalRange(minDistToStar, maxDistToStar);
 	averageDistToStar = (minDistToStar+maxDistToStar)>>1;
 
 	/* first calculate blackbody temp (no greenhouse effect, zero albedo) */
-	int bbody_temp = CalcSurfaceTemp(star, averageDistToStar, albedo, greenhouse);
+	int bbody_temp = CalcSurfaceTemp(star, averageDistToStar, fixed(0), fixed(0));
 
 	averageTemp = bbody_temp;
 
@@ -1786,61 +1846,40 @@ void SystemBody::PickPlanetType(MTRand &rand)
 				starTypeInfo[type].radius[1]), 100);
 	} else if (mass > 6) {
 		type = SystemBody::TYPE_PLANET_GAS_GIANT;
+
+		// temperature with no greenhouse effect and bond albedo 0.32
+		averageTemp = CalcSurfaceTemp(star, averageDistToStar, fixed(32,100), fixed(0));
 	} else if (mass > fixed(1, 15000)) {
 		type = SystemBody::TYPE_PLANET_TERRESTRIAL;
 
-		fixed amount_volatiles = fixed(2,1)*rand.Fixed();
-		if (rand.Int32(3)) amount_volatiles *= mass;
+		// random amount of volatiles, start with Venus-like high pressure atmosphere
+		fixed amount_volatiles = fixed(80,1)*rand.Fixed();
+		// smaller planets start with less atmosphere due to atmosphere escape
+		amount_volatiles *= mass;
 		// total atmosphere loss
 		if (rand.Fixed() > mass) amount_volatiles = fixed(0);
 
-		// give this few iterations to allow multiple-staged greenhouse effect
-		for(int i = 0, prevTemp; i < 10; i++) {
-			// fudge how much of the volatiles are in which state
-			greenhouse = fixed(0);
-			albedo = fixed(0);
-			// CO2 sublimation
-			if (averageTemp > 195) greenhouse += amount_volatiles * fixed(1,3);
-			else albedo += fixed(2,6);
-			// H2O liquid
-			if (averageTemp > 273) greenhouse += amount_volatiles * fixed(1,5);
-			else albedo += fixed(3,6);
-			// H2O boils
-			if (averageTemp > 373) greenhouse += amount_volatiles * fixed(1,3);
+	    // try for life
+	    int minTemp = CalcSurfaceTempTerrestial(star, maxDistToStar, fixed(1,1));
+	    int maxTemp = CalcSurfaceTempTerrestial(star, minDistToStar, fixed(1,1));
+	    if ((star->type != TYPE_BROWN_DWARF) &&
+	        (star->type != TYPE_WHITE_DWARF) &&
+	        (star->type != TYPE_STAR_O) &&
+	        (minTemp > CELSIUS-10) && (minTemp < CELSIUS+90) &&
+	        (maxTemp > CELSIUS-10) && (maxTemp < CELSIUS+90) &&
+	        (amountLiquid(amount_volatiles, minTemp) > 0)) {
 
-			prevTemp = averageTemp;
-			averageTemp = CalcSurfaceTemp(star, averageDistToStar, albedo, greenhouse);
-			if(prevTemp == averageTemp)
-				break;
-		}
+	        m_life = rand.Fixed();
+	        // life reduces atmosphere by storing CO2
+	        amount_volatiles = amount_volatiles/40;
+	        averageTemp = CalcSurfaceTempTerrestial(star, averageDistToStar, amount_volatiles);
+	    }
 
-		const fixed proportion_gas = averageTemp / (fixed(100,1) + averageTemp);
-		m_volatileGas = proportion_gas * amount_volatiles;
+		m_volatileGas = amountGas(amount_volatiles, averageTemp);
+		m_volatileLiquid = amountLiquid(amount_volatiles, averageTemp);
+		m_volatileIces = amountIces(amount_volatiles, averageTemp);
 
-		const fixed proportion_liquid = (fixed(1,1)-proportion_gas) * (averageTemp / (fixed(50,1) + averageTemp));
-		m_volatileLiquid = proportion_liquid * amount_volatiles;
 
-		const fixed proportion_ices = fixed(1,1) - (proportion_gas + proportion_liquid);
-		m_volatileIces = proportion_ices * amount_volatiles;
-
-		//printf("temp %dK, gas:liquid:ices %f:%f:%f\n", averageTemp, proportion_gas.ToFloat(),
-		//		proportion_liquid.ToFloat(), proportion_ices.ToFloat());
-
-		if ((m_volatileLiquid > fixed(0)) &&
-		    (averageTemp > CELSIUS-60) &&
-		    (averageTemp < CELSIUS+200)) {
-			// try for life
-			int minTemp = CalcSurfaceTemp(star, maxDistToStar, albedo, greenhouse);
-			int maxTemp = CalcSurfaceTemp(star, minDistToStar, albedo, greenhouse);
-
-			if ((star->type != TYPE_BROWN_DWARF) &&
-			    (star->type != TYPE_WHITE_DWARF) &&
-			    (star->type != TYPE_STAR_O) &&
-			    (minTemp > CELSIUS-10) && (minTemp < CELSIUS+90) &&
-			    (maxTemp > CELSIUS-10) && (maxTemp < CELSIUS+90)) {
-				m_life = rand.Fixed();
-			}
-		}
 	} else {
 		type = SystemBody::TYPE_PLANET_ASTEROID;
 	}
