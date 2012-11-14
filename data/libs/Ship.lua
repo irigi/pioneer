@@ -87,3 +87,5 @@ function Ship:Jettison(equip)
 	end
 end
 
+hyperspaceRangeParameter = 400.0
+hyperspaceDurationParameter = 0.45

@@ -992,8 +992,12 @@ void Pi::MainLoop()
 
 float Pi::CalcHyperspaceRangeMax(int hyperclass, int total_mass_in_tonnes)
 {
-	// 400.0f is balancing parameter
-	return 400.0f * hyperclass * hyperclass / (total_mass_in_tonnes);
+	// get the balancing parameter from Lua
+	lua_State * l = Lua::manager->GetLuaState();
+	lua_getglobal(l, "hyperspaceRangeParameter");
+	const float hyperspaceRangeParameter = lua_tonumber(l, -1);
+
+	return hyperspaceRangeParameter * hyperclass * hyperclass / (total_mass_in_tonnes);
 }
 
 float Pi::CalcHyperspaceRange(int hyperclass, float total_mass_in_tonnes, int fuel)
@@ -1021,8 +1025,13 @@ float Pi::CalcHyperspaceDuration(int hyperclass, int total_mass_in_tonnes, float
 {
 	float hyperspace_range_max = CalcHyperspaceRangeMax(hyperclass, total_mass_in_tonnes);
 
+	// get the balancing parameter from Lua
+	lua_State * l = Lua::manager->GetLuaState();
+	lua_getglobal(l, "hyperspaceDurationParameter");
+	const float hyperspaceDurationParameter = lua_tonumber(l, -1);
+
 	// 0.45 is balancing parameter
-	return ((dist * dist * 0.45) / (hyperspace_range_max * hyperclass)) *
+	return ((dist * dist * hyperspaceDurationParameter) / (hyperspace_range_max * hyperclass)) *
 			(60.0 * 60.0 * 24.0 * sqrtf(total_mass_in_tonnes));
 }
 
