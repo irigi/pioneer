@@ -9,6 +9,8 @@
 #include "vector3.h"
 #include "matrix4x4.h"
 
+class Orbit;
+
 class DynamicBody: public ModelBody {
 public:
 	OBJDEF(DynamicBody, ModelBody, DYNAMICBODY);
@@ -47,6 +49,8 @@ public:
 	virtual void UpdateInterpTransform(double alpha);
 
 	virtual void PostLoadFixup(Space *space);
+
+	Orbit ReturnOrbit();
 protected:
 	virtual void Save(Serializer::Writer &wr, Space *space);
 	virtual void Load(Serializer::Reader &rd, Space *space);
@@ -69,6 +73,8 @@ private:
 	// for time accel reduction fudge
 	vector3d m_lastForce;
 	vector3d m_lastTorque;
+
+	Orbit *orbit;
 };
 
 #endif /* _DYNAMICBODY_H */

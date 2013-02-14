@@ -36,6 +36,7 @@ struct Orbit {
 	// 0.0 <= t <= 1.0. Not for finding orbital pos
 	vector3d EvenSpacedPosAtTime(double t) const;
 	/* duplicated from SystemBody... should remove probably */
+	static double calc_orbital_period(double semiMajorAxis, double centralMass);
 	double eccentricity;
 	double semiMajorAxis;
 	double orbitalPhaseAtStart; // 0 to 2 pi radians

@@ -900,7 +900,7 @@ vector3d Orbit::EvenSpacedPosAtTime(double t) const
 	return pos;
 }
 
-static double calc_orbital_period(double semiMajorAxis, double centralMass)
+double Orbit::calc_orbital_period(double semiMajorAxis, double centralMass)
 {
 	return 2.0*M_PI*sqrt((semiMajorAxis*semiMajorAxis*semiMajorAxis)/(G*centralMass));
 }
@@ -1001,7 +1001,7 @@ void StarSystem::CustomGetKidsOf(SystemBody *parent, const std::vector<CustomSys
 		if(parent->type == SystemBody::TYPE_GRAVPOINT) // generalize Kepler's law to multiple stars
 			kid->orbit.period = calc_orbital_period_gravpoint(kid->orbit.semiMajorAxis, parent->GetMass(), kid->GetMass());
 		else
-			kid->orbit.period = calc_orbital_period(kid->orbit.semiMajorAxis, parent->GetMass());
+			kid->orbit.period = Orbit::calc_orbital_period(kid->orbit.semiMajorAxis, parent->GetMass());
 		kid->orbit.orbitalPhaseAtStart = csbody->orbitalPhaseAtStart.ToDouble();
 		if (csbody->heightMapFilename.length() > 0) {
 			kid->heightMapFilename = csbody->heightMapFilename.c_str();
@@ -1730,7 +1730,7 @@ void StarSystem::MakePlanetsAround(SystemBody *primary, MTRand &rand)
 		if(primary->type == SystemBody::TYPE_GRAVPOINT) // generalize Kepler's law to multiple stars
 			planet->orbit.period = calc_orbital_period_gravpoint(planet->orbit.semiMajorAxis, primary->GetMass(), planet->GetMass());
 		else
-			planet->orbit.period = calc_orbital_period(planet->orbit.semiMajorAxis, primary->GetMass());
+			planet->orbit.period = Orbit::calc_orbital_period(planet->orbit.semiMajorAxis, primary->GetMass());
 
 		double r1 = rand.Double(2*M_PI);		// function parameter evaluation order is implementation-dependent
 		double r2 = rand.NDouble(5);			// can't put two rands in the same expression
@@ -2187,7 +2187,7 @@ void SystemBody::PopulateAddStations(StarSystem *system)
 		sp->axialTilt = fixed(0);
 		sp->orbit.eccentricity = 0;
 		sp->orbit.semiMajorAxis = sp->semiMajorAxis.ToDouble()*AU;
-		sp->orbit.period = calc_orbital_period(sp->orbit.semiMajorAxis, this->mass.ToDouble() * EARTH_MASS);
+		sp->orbit.period = Orbit::calc_orbital_period(sp->orbit.semiMajorAxis, this->mass.ToDouble() * EARTH_MASS);
 		sp->orbit.rotMatrix = matrix3x3d::Identity();
 		children.insert(children.begin(), sp);
 		system->m_spaceStations.push_back(sp);

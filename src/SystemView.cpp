@@ -333,6 +333,8 @@ void SystemView::Draw3D()
 			const SystemBody *navTargetSystemBody = navTarget ? navTarget->GetSystemBody() : 0;
 			if (navTargetSystemBody)
 				PutSelectionBox(navTargetSystemBody, pos, Color(0.0, 1.0, 0.0, 1.0));
+
+			Pi::player->ReturnOrbit();
 		}
 	}
 

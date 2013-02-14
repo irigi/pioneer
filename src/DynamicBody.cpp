@@ -8,6 +8,7 @@
 #include "Serializer.h"
 #include "Planet.h"
 #include "Pi.h"
+#include "galaxy/StarSystem.h"
 
 DynamicBody::DynamicBody(): ModelBody()
 {
@@ -257,4 +258,14 @@ bool DynamicBody::OnCollision(Object *o, Uint32 flags, double relVel)
 	// ignore damage less than a gram
 	if (kineticEnergy > 1e-3) OnDamage(o, float(kineticEnergy));
 	return true;
+}
+
+Orbit DynamicBody::ReturnOrbit() {
+	Orbit ret;
+	vector3d vel = this->GetVelocity();
+	Frame *fram = this->GetFrame();
+	fram->GetBody()->GetMass();
+
+
+	return ret;
 }
