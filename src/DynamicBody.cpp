@@ -8,7 +8,6 @@
 #include "Serializer.h"
 #include "Planet.h"
 #include "Pi.h"
-#include "galaxy/StarSystem.h"
 
 DynamicBody::DynamicBody(): ModelBody()
 {
@@ -260,12 +259,40 @@ bool DynamicBody::OnCollision(Object *o, Uint32 flags, double relVel)
 	return true;
 }
 
-Orbit DynamicBody::ReturnOrbit() {
-	Orbit ret;
-	vector3d vel = this->GetVelocity();
-	Frame *fram = this->GetFrame();
-	fram->GetBody()->GetMass();
+// return parameters for orbit of any body, gives both elliptic and hyperbolic trajectories
+Orbit *DynamicBody::ReturnOrbit() {
+	Orbit *ret = &(this->orbit);
 
+	Frame *fram = this->GetFrame();
+	if(fram->IsRotFrame()) fram = fram->GetNonRotFrame();
+	printf("a\n");
+	double mass = fram->GetBody()->GetMass();
+
+	vector3d vel = this->GetVelocityRelTo(fram);
+	vector3d pos = this->GetPositionRelTo(fram);
+
+	// angular momentum
+	double LL =(vel.Cross(pos)).Length();
+	// total energy
+	double EE = vel.LengthSqr()/2 - mass*6.672e-11/pos.Length();
+
+	// http://en.wikipedia.org/wiki/Orbital_eccentricity
+	ret->eccentricity = 1 + 2*EE*LL*LL/pow(mass*6.672e-11, 2);
+	if(ret->eccentricity < 0) ret->eccentricity = 0;
+	ret->eccentricity = sqrt(ret->eccentricity);
+
+	double latitude = acos(pos.Cross(vel).z/LL),
+			offset = 0;
+	ret->rotMatrix = matrix3x3d::RotateY(offset) * matrix3x3d::RotateX(-0.5*M_PI + latitude);
+
+	ret->semiMajorAxis = 2*EE*LL*LL + pow(mass*6.672e-11, 2);
+	if(ret->semiMajorAxis < 0) ret->semiMajorAxis  = 0;
+	ret->semiMajorAxis = (sqrt(ret->semiMajorAxis ) - mass*6.672e-11)/2/EE;
+	ret->semiMajorAxis = ret->semiMajorAxis/fabs(1-ret->eccentricity);
+
+	ret->orbitalPhaseAtStart = 0;
+
+	printf("\necc: %f\na: %f\nphase: %f\n", ret->eccentricity, ret->semiMajorAxis, ret->orbitalPhaseAtStart);
 
 	return ret;
 }

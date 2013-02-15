@@ -868,18 +868,35 @@ vector3d Orbit::OrbitalPosAtTime(double t) const
 {
 	const double e = eccentricity;
 	const double M_t0 = Orbit::orbitalPhaseAtStart; // mean anomaly at t = 0
-	const double M = 2.0*M_PI*t / period + M_t0; // mean anomaly
-	// eccentric anomaly
-	// NR method to solve for E: M = E-sin(E)
-	double E = M;
-	for (int iter=5; iter > 0; --iter) {
-		E = E - (E-e*(sin(E))-M) / (1.0 - e*cos(E));
+	double r = 0, cos_v = 0, sin_v = 0;
+
+	if(e >= 0 && e <= 1) { // elliptic orbit
+		const double M = 2.0*M_PI*t / period + M_t0; // mean anomaly
+		// eccentric anomaly
+		// NR method to solve for E: M = E-sin(E)
+		double E = M;
+		for (int iter=5; iter > 0; --iter) {
+			E = E - (E-e*(sin(E))-M) / (1.0 - e*cos(E));
+		}
+		// heliocentric distance
+		r = semiMajorAxis * (1.0 - e*cos(E));
+		// true anomaly (angle of orbit position)
+		cos_v = (cos(E) - e) / (1.0 - e*cos(E));
+		sin_v = (sqrt(1.0-e*e)*sin(E))/ (1.0 - e*cos(E));
+	} else if(e > 1) { // hyperbolic orbit
+		const double M = 2.0*M_PI*t / period + M_t0; // mean anomaly
+		// eccentric anomaly
+		// NR method to solve for E: M = E-sinh(E)
+		double E = M;
+		for (int iter=5; iter > 0; --iter) {
+			E = E - (E-e*(sinh(E))-M) / (1.0 - e*cosh(E));
+		}
+		// heliocentric distance
+		r = semiMajorAxis * (e*cosh(E) - 1.0);
+		// true anomaly (angle of orbit position)
+		cos_v = (cosh(E) - e) / (1.0 - e*cosh(E));
+		sin_v = (sqrt(e*e-1.0)*sinh(E))/ (e*cosh(E) - 1.0);
 	}
-	// heliocentric distance
-	double r = semiMajorAxis * (1.0 - e*cos(E));
-	// true anomaly (angle of orbit position)
-	double cos_v = (cos(E) - e) / (1.0 - e*cos(E));
-	double sin_v = (sqrt(1.0-e*e)*sin(E))/ (1.0 - e*cos(E));
 
 	vector3d pos = vector3d(-cos_v*r, sin_v*r, 0);
 	pos = rotMatrix * pos;
@@ -892,10 +909,31 @@ vector3d Orbit::OrbitalPosAtTime(double t) const
 vector3d Orbit::EvenSpacedPosAtTime(double t) const
 {
 	const double e = eccentricity;
-	const double M = 2*M_PI*t;
-	const double v = 2*atan(sqrt((1+e)/(1-e)) * tan(M/2.0));
-	const double r = semiMajorAxis * (1 - e*e) / (1 + e*cos(v));
-	vector3d pos = vector3d(-cos(v)*r, sin(v)*r, 0);
+	const double M = 2*M_PI*t - M_PI;
+	vector3d pos = vector3d(0.0f,0.0f,0.0f);
+
+	if(e < 1) {
+		// XXX: this is not really necessary in this function, v = M would do just fine
+		const double v = 2*atan(sqrt((1+e)/(1-e)) * tan(M/2.0));
+		const double r = semiMajorAxis * (1 - e*e) / (1 + e*cos(v));
+		pos = vector3d(-cos(v)*r, sin(v)*r, 0);
+	} else {
+		double v = M;
+
+		double r = semiMajorAxis * (e*e - 1) / (1 + e*cos(v));
+
+		// planet is in infinity
+		if(v <= - acos(-1/e)) {
+			v = - acos(-1/e) + 0.0001;
+			r =  semiMajorAxis * 1e6;
+		}
+		if(v >= acos(-1/e)) {
+			v = acos(-1/e) - 0.0001;
+			r =  semiMajorAxis * 1e6;
+		}
+
+		pos = vector3d(-cos(v)*r, sin(v)*r, 0);
+	}
 	pos = rotMatrix * pos;
 	return pos;
 }
@@ -905,7 +943,7 @@ double Orbit::calc_orbital_period(double semiMajorAxis, double centralMass)
 	return 2.0*M_PI*sqrt((semiMajorAxis*semiMajorAxis*semiMajorAxis)/(G*centralMass));
 }
 
-static double calc_orbital_period_gravpoint(double semiMajorAxis, double totalMass, double bodyMass)
+double Orbit::calc_orbital_period_gravpoint(double semiMajorAxis, double totalMass, double bodyMass)
 {
 	// variable names according to the formula in:
 	// http://en.wikipedia.org/wiki/Barycentric_coordinates_(astronomy)#Two-body_problem
@@ -999,7 +1037,7 @@ void StarSystem::CustomGetKidsOf(SystemBody *parent, const std::vector<CustomSys
 		kid->orbit.eccentricity = csbody->eccentricity.ToDouble();
 		kid->orbit.semiMajorAxis = csbody->semiMajorAxis.ToDouble() * AU;
 		if(parent->type == SystemBody::TYPE_GRAVPOINT) // generalize Kepler's law to multiple stars
-			kid->orbit.period = calc_orbital_period_gravpoint(kid->orbit.semiMajorAxis, parent->GetMass(), kid->GetMass());
+			kid->orbit.period = Orbit::calc_orbital_period_gravpoint(kid->orbit.semiMajorAxis, parent->GetMass(), kid->GetMass());
 		else
 			kid->orbit.period = Orbit::calc_orbital_period(kid->orbit.semiMajorAxis, parent->GetMass());
 		kid->orbit.orbitalPhaseAtStart = csbody->orbitalPhaseAtStart.ToDouble();
@@ -1728,7 +1766,7 @@ void StarSystem::MakePlanetsAround(SystemBody *primary, MTRand &rand)
 		planet->orbit.eccentricity = ecc.ToDouble();
 		planet->orbit.semiMajorAxis = semiMajorAxis.ToDouble() * AU;
 		if(primary->type == SystemBody::TYPE_GRAVPOINT) // generalize Kepler's law to multiple stars
-			planet->orbit.period = calc_orbital_period_gravpoint(planet->orbit.semiMajorAxis, primary->GetMass(), planet->GetMass());
+			planet->orbit.period = Orbit::calc_orbital_period_gravpoint(planet->orbit.semiMajorAxis, primary->GetMass(), planet->GetMass());
 		else
 			planet->orbit.period = Orbit::calc_orbital_period(planet->orbit.semiMajorAxis, primary->GetMass());
 

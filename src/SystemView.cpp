@@ -118,16 +118,18 @@ void SystemView::ResetViewpoint()
 	m_time = Pi::game->GetTime();
 }
 
-void SystemView::PutOrbit(SystemBody *b, vector3d offset)
+void SystemView::PutOrbit(Orbit *orb, vector3d offset, Color color)
 {
 	vector3f vts[100];
-	Color green(0.f, 1.f, 0.f, 1.f);
 	for (int i = 0; i < int(COUNTOF(vts)); ++i) {
 		const double t = double(i) / double(COUNTOF(vts));
-		vector3d pos = b->orbit.EvenSpacedPosAtTime(t);
+		vector3d pos = orb->EvenSpacedPosAtTime(t);
 		vts[i] = vector3f(offset + pos * double(m_zoom));
 	}
-	m_renderer->DrawLines(COUNTOF(vts), vts, green, LINE_LOOP);
+	if(orb->eccentricity < 1) // not close the loop for hyperbolas and parabolas
+		m_renderer->DrawLines(COUNTOF(vts), vts, color, LINE_LOOP);
+	else
+		m_renderer->DrawLines(COUNTOF(vts), vts, color, LINE_STRIP);
 }
 
 void SystemView::OnClickObject(SystemBody *b)
@@ -214,11 +216,19 @@ void SystemView::PutBody(SystemBody *b, vector3d offset, const matrix4x4f &trans
 		PutLabel(b, offset);
 	}
 
+	// XXX: identification of frame by mass is pretty stupid, but I have not better idea now
+	printf("b\n");
+	Frame * fram = Pi::player->GetFrame();
+	if(fram->IsRotFrame()) fram = fram->GetNonRotFrame();
+	if(	fabs(fram->GetBody()->GetMass() - b->GetMass()) / b->GetMass() < 1e-3) {
+		PutOrbit(Pi::player->ReturnOrbit(), offset, Color(1.0f, 0.0f, 0.0f));
+	}
+
 	if (b->children.size()) for(std::vector<SystemBody*>::iterator kid = b->children.begin(); kid != b->children.end(); ++kid) {
 
 		if (is_zero_general((*kid)->orbit.semiMajorAxis)) continue;
 		if ((*kid)->orbit.semiMajorAxis * m_zoom < ROUGH_SIZE_OF_TURD) {
-			PutOrbit(*kid, offset);
+			PutOrbit(&((*kid)->orbit), offset);
 		}
 
 		// not using current time yet
@@ -333,8 +343,6 @@ void SystemView::Draw3D()
 			const SystemBody *navTargetSystemBody = navTarget ? navTarget->GetSystemBody() : 0;
 			if (navTargetSystemBody)
 				PutSelectionBox(navTargetSystemBody, pos, Color(0.0, 1.0, 0.0, 1.0));
-
-			Pi::player->ReturnOrbit();
 		}
 	}
 

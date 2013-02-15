@@ -8,8 +8,7 @@
 #include "ModelBody.h"
 #include "vector3.h"
 #include "matrix4x4.h"
-
-class Orbit;
+#include "galaxy/StarSystem.h"
 
 class DynamicBody: public ModelBody {
 public:
@@ -50,7 +49,7 @@ public:
 
 	virtual void PostLoadFixup(Space *space);
 
-	Orbit ReturnOrbit();
+	Orbit *ReturnOrbit();
 protected:
 	virtual void Save(Serializer::Writer &wr, Space *space);
 	virtual void Load(Serializer::Reader &rd, Space *space);
@@ -74,7 +73,7 @@ private:
 	vector3d m_lastForce;
 	vector3d m_lastTorque;
 
-	Orbit *orbit;
+	Orbit orbit;
 };
 
 #endif /* _DYNAMICBODY_H */

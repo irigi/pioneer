@@ -37,6 +37,7 @@ struct Orbit {
 	vector3d EvenSpacedPosAtTime(double t) const;
 	/* duplicated from SystemBody... should remove probably */
 	static double calc_orbital_period(double semiMajorAxis, double centralMass);
+	static double calc_orbital_period_gravpoint(double semiMajorAxis, double totalMass, double bodyMass);
 	double eccentricity;
 	double semiMajorAxis;
 	double orbitalPhaseAtStart; // 0 to 2 pi radians
