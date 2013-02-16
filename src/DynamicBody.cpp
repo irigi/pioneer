@@ -300,28 +300,70 @@ Orbit *DynamicBody::ReturnOrbit() {
 
 	double angle1 = acos(ang.z/LL) * (ang.x > 0 ? -1 : 1),
 			angle2 = asin(ang.y / LL / sqrt(1-ang.z*ang.z/LL/LL)) * (ang.x > 0 ? -1 : 1),
-			offset;
+			offset = 0, cc = 0;
 
-
+/*
 	if(ret->eccentricity < 1) {
 		offset = ret->semiMajorAxis*(1 - ret->eccentricity*ret->eccentricity) - r_now;
 		offset /= r_now * ret->eccentricity;
 		assert(offset < -1 || offset > 1 ? 0 : 1);
-		offset = -acos(offset)+M_PI; // + asin(pos.y/r_now);
+		offset = -acos(offset); // + asin(pos.y/r_now);
 	} else {
 		offset = ret->semiMajorAxis*(-1 + ret->eccentricity*ret->eccentricity) - r_now;
 		offset /= r_now * ret->eccentricity;
 		assert(offset < -1 || offset > 1 ? 0 : 1);
-		offset = -acos(offset)+M_PI;// + asin(pos.y/r_now);
+		offset = -acos(offset);// + asin(pos.y/r_now);
 	}
 
-	ret->rotMatrix = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(offset);
+	cc = acos(-pos.z/r_now/sin(angle1)) * (pos.x*pos.y*ang.x > 0 ? 1 : -1);
 
+	ret->rotMatrix = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(cc - offset);
+*/
+	double value = 1e99;
+	for(int i = -1; i <= 1; i += 2) {
+		for(int j = -1; j <= 1; j += 2) {
+			for(int k = -1; k <= 1; k++) {
+				for(int l = -1; l <= -1; l += 2) {
+					double off = 0, ccc = 0;
+
+					if(ret->eccentricity < 1) {
+						off = ret->semiMajorAxis*(1 - ret->eccentricity*ret->eccentricity) - r_now;
+						off /= r_now * ret->eccentricity;
+						//assert(offset < -1 || offset > 1 ? 0 : 1);
+						off = -pos.Dot(vel)/fabs(pos.Dot(vel))*acos(off); // + asin(pos.y/r_now);
+					} else {
+						off = ret->semiMajorAxis*(-1 + ret->eccentricity*ret->eccentricity) - r_now;
+						off /= r_now * ret->eccentricity;
+						//assert(offset < -1 || offset > 1 ? 0 : 1);
+						off = -pos.Dot(vel)/fabs(pos.Dot(vel))*acos(off);// + asin(pos.y/r_now);
+					}
+
+					ccc = acos(-pos.z/r_now/sin(angle1)) * (i) + M_PI * k;
+					ret->rotMatrix = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(ccc - off);
+
+					printf("......%e %d %d %d %d -- %e\n", ((ret->rotMatrix*vector3d(-r_now*cos(off),r_now*sin(off),0)) - pos).Length(), i,j,k,l,
+							((ret->rotMatrix*vector3d(v_now*sin(off),v_now*cos(off),0)) - vel).Length());
+
+					if(((ret->rotMatrix*vector3d(-r_now*cos(off),r_now*sin(off),0)) - pos).Length() < value) {
+
+						value = ((ret->rotMatrix*vector3d(-r_now*cos(off),r_now*sin(off),0)) - pos).Length();
+						cc = ccc;
+						offset = off;
+					}
+				}
+			}
+		}
+	}
+
+	ret->rotMatrix = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(cc - offset);
+
+	printf("relative to: %s\n", fram->GetSystemBody()->name.c_str());
 	printf("LL %f %f %f\n", ang.x, ang.y, ang.z);
 	printf("LL2 %f %f %f\n", (ret->rotMatrix*vector3d(0,0,LL)).x, (ret->rotMatrix*vector3d(0,0,LL)).y, (ret->rotMatrix*vector3d(0,0,LL)).z);
 
 	printf("rr %f %f %f\n", pos.x, pos.y, pos.z);
-	printf("rr2 %f %f %f\n", (ret->rotMatrix*vector3d(r_now,0,0)).x, (ret->rotMatrix*vector3d(r_now,0,0)).y, (ret->rotMatrix*vector3d(r_now,0,0)).z);
+	printf("rr2 %f %f %f\nvalue %e\n", (ret->rotMatrix*vector3d(-r_now*cos(offset),r_now*sin(offset),0)).x, (ret->rotMatrix*vector3d(-r_now*cos(offset),r_now*sin(offset),0)).y, (ret->rotMatrix*vector3d(-r_now*cos(offset),r_now*sin(offset),0)).z,
+			value);
 
 	ret->orbitalPhaseAtStart = 0;
 
