@@ -265,30 +265,63 @@ Orbit *DynamicBody::ReturnOrbit() {
 
 	Frame *fram = this->GetFrame();
 	if(fram->IsRotFrame()) fram = fram->GetNonRotFrame();
-	printf("a\n");
-	double mass = fram->GetBody()->GetMass();
+	double mass = fram->GetSystemBody()->GetMass();
 
 	vector3d vel = this->GetVelocityRelTo(fram);
 	vector3d pos = this->GetPositionRelTo(fram);
+	double r_now = pos.Length();
+	double v_now = vel.Length();
+
+	if(mass <= 1e-3 || r_now <= 1e-3 || v_now <= 1e-3) {
+		ret->eccentricity = 0;
+		ret->semiMajorAxis = 0;
+		ret->orbitalPhaseAtStart = 0;
+		ret->rotMatrix =  matrix3x3d::RotateY(0);
+		return ret;
+	}
 
 	// angular momentum
-	double LL =(vel.Cross(pos)).Length();
+	vector3d ang = -(vel.Cross(pos));
+	double LL =ang.Length();
 	// total energy
-	double EE = vel.LengthSqr()/2 - mass*6.672e-11/pos.Length();
+	double EE = vel.LengthSqr()/2 - mass*6.672e-11/r_now;
 
 	// http://en.wikipedia.org/wiki/Orbital_eccentricity
 	ret->eccentricity = 1 + 2*EE*LL*LL/pow(mass*6.672e-11, 2);
 	if(ret->eccentricity < 0) ret->eccentricity = 0;
 	ret->eccentricity = sqrt(ret->eccentricity);
 
-	double latitude = acos(pos.Cross(vel).z/LL),
-			offset = 0;
-	ret->rotMatrix = matrix3x3d::RotateY(offset) * matrix3x3d::RotateX(-0.5*M_PI + latitude);
-
 	ret->semiMajorAxis = 2*EE*LL*LL + pow(mass*6.672e-11, 2);
 	if(ret->semiMajorAxis < 0) ret->semiMajorAxis  = 0;
 	ret->semiMajorAxis = (sqrt(ret->semiMajorAxis ) - mass*6.672e-11)/2/EE;
 	ret->semiMajorAxis = ret->semiMajorAxis/fabs(1-ret->eccentricity);
+
+	// correct rotation of the orbit
+
+	double angle1 = acos(ang.z/LL) * (ang.x > 0 ? -1 : 1),
+			angle2 = asin(ang.y / LL / sqrt(1-ang.z*ang.z/LL/LL)) * (ang.x > 0 ? -1 : 1),
+			offset;
+
+
+	if(ret->eccentricity < 1) {
+		offset = ret->semiMajorAxis*(1 - ret->eccentricity*ret->eccentricity) - r_now;
+		offset /= r_now * ret->eccentricity;
+		assert(offset < -1 || offset > 1 ? 0 : 1);
+		offset = -acos(offset)+M_PI; // + asin(pos.y/r_now);
+	} else {
+		offset = ret->semiMajorAxis*(-1 + ret->eccentricity*ret->eccentricity) - r_now;
+		offset /= r_now * ret->eccentricity;
+		assert(offset < -1 || offset > 1 ? 0 : 1);
+		offset = -acos(offset)+M_PI;// + asin(pos.y/r_now);
+	}
+
+	ret->rotMatrix = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(offset);
+
+	printf("LL %f %f %f\n", ang.x, ang.y, ang.z);
+	printf("LL2 %f %f %f\n", (ret->rotMatrix*vector3d(0,0,LL)).x, (ret->rotMatrix*vector3d(0,0,LL)).y, (ret->rotMatrix*vector3d(0,0,LL)).z);
+
+	printf("rr %f %f %f\n", pos.x, pos.y, pos.z);
+	printf("rr2 %f %f %f\n", (ret->rotMatrix*vector3d(r_now,0,0)).x, (ret->rotMatrix*vector3d(r_now,0,0)).y, (ret->rotMatrix*vector3d(r_now,0,0)).z);
 
 	ret->orbitalPhaseAtStart = 0;
 

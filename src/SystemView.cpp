@@ -216,11 +216,9 @@ void SystemView::PutBody(SystemBody *b, vector3d offset, const matrix4x4f &trans
 		PutLabel(b, offset);
 	}
 
-	// XXX: identification of frame by mass is pretty stupid, but I have not better idea now
-	printf("b\n");
 	Frame * fram = Pi::player->GetFrame();
 	if(fram->IsRotFrame()) fram = fram->GetNonRotFrame();
-	if(	fabs(fram->GetBody()->GetMass() - b->GetMass()) / b->GetMass() < 1e-3) {
+	if(fram->GetSystemBody() == b && fram->GetSystemBody()->GetMass() > 0) {
 		PutOrbit(Pi::player->ReturnOrbit(), offset, Color(1.0f, 0.0f, 0.0f));
 	}
 
