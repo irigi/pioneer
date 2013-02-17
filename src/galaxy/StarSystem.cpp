@@ -909,7 +909,7 @@ vector3d Orbit::OrbitalPosAtTime(double t) const
 vector3d Orbit::EvenSpacedPosAtTime(double t) const
 {
 	const double e = eccentricity;
-	const double M = 2*M_PI*t - M_PI;
+	const double M = 2*M_PI*t +orbitalPhaseAtStart;
 	vector3d pos = vector3d(0.0f,0.0f,0.0f);
 
 	if(e < 1) {
@@ -925,11 +925,11 @@ vector3d Orbit::EvenSpacedPosAtTime(double t) const
 		// planet is in infinity
 		if(v <= - acos(-1/e)) {
 			v = - acos(-1/e) + 0.0001;
-			r =  semiMajorAxis * 1e6;
+			r =  1.5e13; // 100 AU
 		}
 		if(v >= acos(-1/e)) {
 			v = acos(-1/e) - 0.0001;
-			r =  semiMajorAxis * 1e6;
+			r =  1.5e13; // 100 AU
 		}
 
 		pos = vector3d(-cos(v)*r, sin(v)*r, 0);
