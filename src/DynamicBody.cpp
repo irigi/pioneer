@@ -267,6 +267,7 @@ Orbit *DynamicBody::ReturnOrbit() {
 	if(fram->IsRotFrame()) fram = fram->GetNonRotFrame();
 	double mass = fram->GetSystemBody()->GetMass();
 
+	// current velocity and position with respect to non-rotating frame
 	vector3d vel = this->GetVelocityRelTo(fram);
 	vector3d pos = this->GetPositionRelTo(fram);
 	double r_now = pos.Length() + 1e-12;
@@ -298,18 +299,20 @@ Orbit *DynamicBody::ReturnOrbit() {
 	ret->semiMajorAxis = (sqrt(ret->semiMajorAxis ) - mass*6.672e-11)/2/EE;
 	ret->semiMajorAxis = ret->semiMajorAxis/fabs(1.0-ret->eccentricity);
 
-	// correct rotation of the orbit
+	// The formulas for rotation matrix were derived based on following assumptions:
+	//	1. Trajectory follows Kepler's law and vector {-r cos(v), -r sin(v), 0}, r(t) and v(t) are parameters.
+	//	2. Correct transformation must transform {0,0,LL} to ang and {-r_now cos(orbitalPhaseAtStart), -r_now sin(orbitalPhaseAtStart), 0} to pos.
+	//  3. orbitalPhaseAtStart (offset) is calculated from r = a ((e^2 - 1)/(1 + e cos(v) ))
 	double angle1 = acos(Clamp(ang.z/LL ,-1 + 1e-6,1 - 1e-6)) * (ang.x > 0 ? -1 : 1),
-			angle2 = asin(Clamp(ang.y / LL / sqrt(1.0 - ang.z*ang.z/LL/LL) ,-1 + 1e-6,1 - 1e-6) ) * (ang.x > 0 ? -1 : 1),
-			offset = 0, cc = 0;
-
+			angle2 = asin(Clamp(ang.y / LL / sqrt(1.0 - ang.z*ang.z/LL/LL) ,-1 + 1e-6,1 - 1e-6) ) * (ang.x > 0 ? -1 : 1);
 
 	// There are two possible solutions of the equation and the only way how to find the correct one
 	// I know about is to try both and check if the position is transformed correctly. We minimize the difference
 	// of the transformed  position and expected result.
-	double value = 1e99;
+	double value = 1e99, offset = 0, cc = 0;
 	for(int i = -1; i <= 1; i += 2) {
 		double off = 0, ccc = 0;
+		matrix3x3d mat;
 
 		if(ret->eccentricity < 1) {
 			off = ret->semiMajorAxis*(1 - ret->eccentricity*ret->eccentricity) - r_now;
@@ -317,35 +320,24 @@ Orbit *DynamicBody::ReturnOrbit() {
 			off = ret->semiMajorAxis*(-1 + ret->eccentricity*ret->eccentricity) - r_now;
 		}
 
+		// correct sign of offset is given by sign pos.Dot(vel) (heading towards apogeum or porigeum?]
 		off = Clamp(off/(r_now * ret->eccentricity), -1 + 1e-6,1 - 1e-6);
 		off = -pos.Dot(vel)/fabs(pos.Dot(vel))*acos(off);
 
 		ccc = acos(-pos.z/r_now/sin(angle1)) * i;
-		ret->rotMatrix = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(ccc - off);
+		mat = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(ccc - off);
 
-		//printf("......%e %d %d %d %d -- %e\n", ((ret->rotMatrix*vector3d(-r_now*cos(off),r_now*sin(off),0)) - pos).Length(), i,j,k,l,
-		//		((ret->rotMatrix*vector3d(v_now*sin(off),v_now*cos(off),0)) - vel).Length());
-
-		if(((ret->rotMatrix*vector3d(-r_now*cos(off),r_now*sin(off),0)) - pos).Length() < value) {
-			value = ((ret->rotMatrix*vector3d(-r_now*cos(off),r_now*sin(off),0)) - pos).Length();
+		if(((mat*vector3d(-r_now*cos(off),r_now*sin(off),0)) - pos).Length() < value) {
+			value = ((mat*vector3d(-r_now*cos(off),r_now*sin(off),0)) - pos).Length();
 			cc = ccc;
 			offset = off;
 		}
 	}
 
-	ret->rotMatrix = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(cc - offset);
-
-	//printf("relative to: %s\n", fram->GetSystemBody()->name.c_str());
-	//printf("LL %f %f %f\n", ang.x, ang.y, ang.z);
-	//printf("LL2 %f %f %f\n", (ret->rotMatrix*vector3d(0,0,LL)).x, (ret->rotMatrix*vector3d(0,0,LL)).y, (ret->rotMatrix*vector3d(0,0,LL)).z);
-
-	//printf("rr %f %f %f\n", pos.x, pos.y, pos.z);
-	//printf("rr2 %f %f %f\nvalue %e\n", (ret->rotMatrix*vector3d(-r_now*cos(offset),r_now*sin(offset),0)).x, (ret->rotMatrix*vector3d(-r_now*cos(offset),r_now*sin(offset),0)).y, (ret->rotMatrix*vector3d(-r_now*cos(offset),r_now*sin(offset),0)).z,
-	//		value);
-
-	ret->orbitalPhaseAtStart = offset;
-
-	//printf("\necc: %f\na: %f\nphase: %f\n", ret->eccentricity, ret->semiMajorAxis, ret->orbitalPhaseAtStart);
+	// matrix3x3d::RotateX(M_PI) and minus sign before offset changes solution above, derived for orbits {-r cos(v), -r sin(v), 0}
+	// to {-r cos(v), -r sin(v), 0}
+	ret->rotMatrix = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(cc - offset) * matrix3x3d::RotateX(M_PI);
+	ret->orbitalPhaseAtStart = -offset;
 
 	return ret;
 }

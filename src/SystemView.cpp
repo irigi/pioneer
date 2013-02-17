@@ -118,15 +118,23 @@ void SystemView::ResetViewpoint()
 	m_time = Pi::game->GetTime();
 }
 
-void SystemView::PutOrbit(Orbit *orb, vector3d offset, Color color)
+void SystemView::PutOrbit(Orbit *orb, vector3d offset, Color color, double planetRadius)
 {
 	vector3f vts[100];
+	bool hideAllFollowing = false; // hide all further points because we crushed to planet
 	for (int i = 0; i < int(COUNTOF(vts)); ++i) {
 		const double t = double(i) / double(COUNTOF(vts));
 		vector3d pos = orb->EvenSpacedPosAtTime(t);
-		vts[i] = vector3f(offset + pos * double(m_zoom));
+
+		if(pos.Length() < planetRadius)
+			hideAllFollowing = true;
+
+		if(hideAllFollowing && i > 0)
+			vts[i] = vts[i-1];
+		else
+			vts[i] = vector3f(offset + pos * double(m_zoom));
 	}
-	if(orb->eccentricity < 1) // not close the loop for hyperbolas and parabolas
+	if(orb->eccentricity < 1 && !hideAllFollowing) // not close the loop for hyperbolas and parabolas and crashed ellipses
 		m_renderer->DrawLines(COUNTOF(vts), vts, color, LINE_LOOP);
 	else
 		m_renderer->DrawLines(COUNTOF(vts), vts, color, LINE_STRIP);
@@ -219,7 +227,7 @@ void SystemView::PutBody(SystemBody *b, vector3d offset, const matrix4x4f &trans
 	Frame * fram = Pi::player->GetFrame();
 	if(fram->IsRotFrame()) fram = fram->GetNonRotFrame();
 	if(fram->GetSystemBody() == b && fram->GetSystemBody()->GetMass() > 0) {
-		PutOrbit(Pi::player->ReturnOrbit(), offset, Color(1.0f, 0.0f, 0.0f));
+		PutOrbit(Pi::player->ReturnOrbit(), offset, Color(1.0f, 0.0f, 0.0f), b->GetRadius());
 	}
 
 	if (b->children.size()) for(std::vector<SystemBody*>::iterator kid = b->children.begin(); kid != b->children.end(); ++kid) {
