@@ -867,13 +867,10 @@ double SystemBody::CalcSurfaceGravity() const
 vector3d Orbit::OrbitalPosAtTime(double t) const
 {
 	const double e = eccentricity;
+	const double M_t0 = orbitalPhaseAtStart;
 	double r = 0, cos_v = 0, sin_v = 0;
 
 	if(e >= 0 && e < 1) { // elliptic orbit
-		double M_t0;
-		M_t0 = 2*atan(tan(orbitalPhaseAtStart/2)*sqrt((1-e)/(1+e))); // mean anomaly at t = 0
-		M_t0 = M_t0 - e*sin(M_t0);
-
 		const double M = 2.0*M_PI*t / Period() + M_t0; // mean anomaly
 
 		// eccentric anomaly
@@ -888,29 +885,28 @@ vector3d Orbit::OrbitalPosAtTime(double t) const
 		cos_v = (cos(E) - e) / (1.0 - e*cos(E));
 		sin_v = (sqrt(1.0-e*e)*sin(E))/ (1.0 - e*cos(E));
 
-	} else if(e > 1) { // hyperbolic orbit ---------------- XXX: NOT TESTED
-		double M_t0;
-		M_t0 = 2*atanh(tan(orbitalPhaseAtStart/2)*sqrt((e-1)/(1+e))); // mean anomaly at t = 0
-		M_t0 = M_t0 - e*sinh(M_t0);
-
+	} else if(e > 1) { // hyperbolic orbit
 		const double M = t * velocityAreaPerSecond / semiMajorAxis / semiMajorAxis / sqrt(e*e-1) + M_t0; // mean anomaly
 
 		// eccentric anomaly
 		// NR method to solve for E: M = E-sinh(E)
-		double E = M;
+		// sinh E and cosh E are solved directly, because of inherent numerical instability of tanh(k arctanh x)
+		double ch, sh = 2;
 		for (int iter=5; iter > 0; --iter) {
-			E = E - (E-e*(sinh(E))-M) / (1.0 - e*cosh(E));
+			sh = sh - (M + e*sh - asinh(sh))/(e - 1/sqrt(1 + pow(sh,2)));
 		}
 
+		ch = sqrt(1 + sh*sh);
+
+		if(fabs(orbitalPhaseAtStart) > 0.1)
+			printf(" %f %f | %f %f %f\n", t, M, velocityAreaPerSecond, sh, e);
+
 		// heliocentric distance
-		r = semiMajorAxis * (e*cosh(E) - 1.0);
+		r = semiMajorAxis * (e*ch - 1.0);
 
 		// true anomaly (angle of orbit position)
-		cos_v = (cosh(E) - e) / (1.0 - e*cosh(E));
-		sin_v = (sqrt(e*e-1.0)*sinh(E))/ (e*cosh(E) - 1.0);
-
-		if(fabs(orbitalPhaseAtStart) > 0.01)
-		printf("--- %f %f %f | %f %f\n", sin_v, sin(M_t0), sin(orbitalPhaseAtStart), M, E);
+		cos_v = (ch - e) / (1.0 - e*ch);
+		sin_v = (sqrt(e*e-1.0)*sh)/ (e*ch - 1.0);
 	}
 
 	vector3d pos = vector3d(-cos_v*r, sin_v*r, 0);
@@ -922,10 +918,10 @@ vector3d Orbit::OrbitalPosAtTime(double t) const
 // used for stepping through the orbit in small fractions
 // mean anomaly <-> true anomaly conversion doesn't have
 // to be taken into account
-vector3d Orbit::EvenSpacedPosAtTime(double t) const
+vector3d Orbit::EvenSpacedPosTrajectory(double angle) const
 {
 	const double e = eccentricity;
-	double v = 2*M_PI*t +orbitalPhaseAtStart;
+	double v = 2*M_PI*angle +TrueAnomaly(orbitalPhaseAtStart);
 	vector3d pos = vector3d(0.0f,0.0f,0.0f);
 
 	if(e < 1) {
@@ -959,12 +955,54 @@ double Orbit::Period() const {
 	}
 }
 
+double Orbit::TrueAnomaly(double MeanAnomaly) const {
+	const double e = eccentricity, M = MeanAnomaly;
+	double cos_v, sin_v, v;
+	if(e >= 0 && e < 1) { // elliptic orbit
+		// eccentric anomaly
+		// NR method to solve for E: M = E-sin(E)
+		double E = M;
+		for (int iter=5; iter > 0; --iter) {
+			E = E - (E-e*(sin(E))-M) / (1.0 - e*cos(E));
+		}
+
+		// true anomaly (angle of orbit position)
+		cos_v = (cos(E) - e) / (1.0 - e*cos(E));
+		sin_v = (sqrt(1.0-e*e)*sin(E))/ (1.0 - e*cos(E));
+
+	} else if(e > 1) { // hyperbolic orbit
+		// eccentric anomaly
+		// NR method to solve for E: M = E-sinh(E)
+		// sinh E and cosh E are solved directly, because of inherent numerical instability of tanh(k arctanh x)
+		double ch, sh = 2;
+		for (int iter=5; iter > 0; --iter) {
+			sh = sh - (M + e*sh - asinh(sh))/(e - 1/sqrt(1 + pow(sh,2)));
+		}
+
+		ch = sqrt(1 + sh*sh);
+
+		// true anomaly (angle of orbit position)
+		cos_v = (ch - e) / (1.0 - e*ch);
+		sin_v = (sqrt(e*e-1.0)*sh)/ (e*ch - 1.0);
+	}
+
+	v = atan2(sin_v, cos_v);
+	return v;
+}
+
 double Orbit::calc_velocity_area_per_sec(double semiMajorAxis, double centralMass, double eccentricity) {
-	return M_PI * semiMajorAxis * semiMajorAxis * sqrt(1 - eccentricity * eccentricity)/ calc_orbital_period(semiMajorAxis, centralMass);
+	if(eccentricity < 1)
+		return M_PI * semiMajorAxis * semiMajorAxis * sqrt(1 - eccentricity * eccentricity)/ calc_orbital_period(semiMajorAxis, centralMass);
+	else
+		return M_PI * semiMajorAxis * semiMajorAxis * sqrt(eccentricity * eccentricity - 1)/ calc_orbital_period(semiMajorAxis, centralMass);
 }
 
 double Orbit::calc_velocity_area_per_sec_gravpoint(double semiMajorAxis, double totalMass, double bodyMass, double eccentricity) {
-	return M_PI * semiMajorAxis * semiMajorAxis * sqrt(1 - eccentricity * eccentricity)/ calc_orbital_period_gravpoint(semiMajorAxis, totalMass, bodyMass);
+	if(eccentricity < 1) {
+		return M_PI * semiMajorAxis * semiMajorAxis * sqrt(1 - eccentricity * eccentricity)/ calc_orbital_period_gravpoint(semiMajorAxis, totalMass, bodyMass);
+	} else {
+		return M_PI * semiMajorAxis * semiMajorAxis * sqrt(eccentricity * eccentricity - 1)/ calc_orbital_period_gravpoint(semiMajorAxis, totalMass, bodyMass);
+	}
 }
 
 double Orbit::calc_orbital_period(double semiMajorAxis, double centralMass)

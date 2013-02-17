@@ -6,6 +6,7 @@
 #include "Space.h"
 #include "Frame.h"
 #include "Serializer.h"
+#include "Game.h"
 #include "Planet.h"
 #include "Pi.h"
 
@@ -283,6 +284,7 @@ Orbit *DynamicBody::ReturnOrbit() {
 	if(mass <= 1e-3 || r_now <= 1e-3 || v_now <= 1e-3 || fabs(EE) <= 1e-12 || 1.0-ang.z*ang.z/LL/LL < 0) {
 		ret->eccentricity = 0;
 		ret->semiMajorAxis = 0;
+		ret->velocityAreaPerSecond = 0;
 		ret->orbitalPhaseAtStart = 0;
 		ret->rotMatrix =  matrix3x3d::RotateY(0);
 		return ret;
@@ -337,7 +339,23 @@ Orbit *DynamicBody::ReturnOrbit() {
 	// matrix3x3d::RotateX(M_PI) and minus sign before offset changes solution above, derived for orbits {-r cos(v), -r sin(v), 0}
 	// to {-r cos(v), -r sin(v), 0}
 	ret->rotMatrix = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(cc - offset) * matrix3x3d::RotateX(M_PI);
-	ret->orbitalPhaseAtStart = -offset;
+	ret->velocityAreaPerSecond = Orbit::calc_velocity_area_per_sec(ret->semiMajorAxis, mass,ret->eccentricity);
+
+	ret->orbitalPhaseAtStart = -offset; // in time t = 0
+
+	double M_t0; // mean anomaly at t = 0
+	const double e = ret->eccentricity;
+	if(e > 0 && e < 1) {
+		M_t0 = 2*atan(tan(ret->orbitalPhaseAtStart/2)*sqrt((1-e)/(1+e)));
+		M_t0 = M_t0 - e*sin(M_t0);
+		M_t0 -= Pi::game->GetTime() * ret->velocityAreaPerSecond / ret->semiMajorAxis / ret->semiMajorAxis / sqrt(1 - e*e);
+	} else {
+		M_t0 = 2*atanh(tan(ret->orbitalPhaseAtStart/2)*sqrt((e-1)/(1+e)));
+		M_t0 = M_t0 - e*sinh(M_t0);
+		M_t0 -= Pi::game->GetTime()  * ret->velocityAreaPerSecond / ret->semiMajorAxis / ret->semiMajorAxis / sqrt(e*e-1);
+	}
+
+	ret->orbitalPhaseAtStart = M_t0;
 
 	return ret;
 }

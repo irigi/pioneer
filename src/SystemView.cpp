@@ -124,7 +124,7 @@ void SystemView::PutOrbit(Orbit *orb, vector3d offset, Color color, double plane
 	bool hideAllFollowing = false; // hide all further points because we crushed to planet
 	for (int i = 0; i < int(COUNTOF(vts)); ++i) {
 		const double t = double(i) / double(COUNTOF(vts));
-		vector3d pos = orb->EvenSpacedPosAtTime(t);
+		vector3d pos = orb->EvenSpacedPosTrajectory(t);
 
 		if(pos.Length() < planetRadius)
 			hideAllFollowing = true;
@@ -229,7 +229,7 @@ void SystemView::PutBody(SystemBody *b, vector3d offset, const matrix4x4f &trans
 	if(fram->GetSystemBody() == b && fram->GetSystemBody()->GetMass() > 0) {
 		Orbit * playerOrbit = Pi::player->ReturnOrbit();
 		PutOrbit(playerOrbit, offset, Color(1.0f, 0.0f, 0.0f), b->GetRadius());
-		PutSelectionBox(offset + playerOrbit->OrbitalPosAtTime(0)* double(m_zoom), Color(1.0f, 0.0f, 0.0f));
+		PutSelectionBox(offset + playerOrbit->OrbitalPosAtTime(m_time)* double(m_zoom), Color(1.0f, 0.0f, 0.0f));
 	}
 
 	if (b->children.size()) for(std::vector<SystemBody*>::iterator kid = b->children.begin(); kid != b->children.end(); ++kid) {

@@ -34,7 +34,7 @@ struct Orbit {
 	Orbit(): orbitalPhaseAtStart(0.0) {};
 	vector3d OrbitalPosAtTime(double t) const;
 	// 0.0 <= t <= 1.0. Not for finding orbital pos
-	vector3d EvenSpacedPosAtTime(double t) const;
+	vector3d EvenSpacedPosTrajectory(double angle) const;
 	/* duplicated from SystemBody... should remove probably */
 	static double calc_orbital_period(double semiMajorAxis, double centralMass);
 	static double calc_orbital_period_gravpoint(double semiMajorAxis, double totalMass, double bodyMass);
@@ -42,6 +42,7 @@ struct Orbit {
 	static double calc_velocity_area_per_sec_gravpoint(double semiMajorAxis, double totalMass, double bodyMass, double eccentricity);
 
 	double Period() const;
+	double TrueAnomaly(double MeanAnomaly) const;
 	double eccentricity;
 	double semiMajorAxis;
 	double orbitalPhaseAtStart; // 0 to 2 pi radians
