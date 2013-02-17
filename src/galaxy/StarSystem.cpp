@@ -867,11 +867,15 @@ double SystemBody::CalcSurfaceGravity() const
 vector3d Orbit::OrbitalPosAtTime(double t) const
 {
 	const double e = eccentricity;
-	const double M_t0 = Orbit::orbitalPhaseAtStart; // mean anomaly at t = 0
 	double r = 0, cos_v = 0, sin_v = 0;
 
-	if(e >= 0 && e <= 1) { // elliptic orbit
-		const double M = 2.0*M_PI*t / period + M_t0; // mean anomaly
+	if(e >= 0 && e < 1) { // elliptic orbit
+		double M_t0;
+		M_t0 = 2*atan(tan(orbitalPhaseAtStart/2)*sqrt((1-e)/(1+e))); // mean anomaly at t = 0
+		M_t0 = M_t0 - e*sin(M_t0);
+
+		const double M = 2.0*M_PI*t / Period() + M_t0; // mean anomaly
+
 		// eccentric anomaly
 		// NR method to solve for E: M = E-sin(E)
 		double E = M;
@@ -883,43 +887,51 @@ vector3d Orbit::OrbitalPosAtTime(double t) const
 		// true anomaly (angle of orbit position)
 		cos_v = (cos(E) - e) / (1.0 - e*cos(E));
 		sin_v = (sqrt(1.0-e*e)*sin(E))/ (1.0 - e*cos(E));
-	} else if(e > 1) { // hyperbolic orbit
-		const double M = 2.0*M_PI*t / period + M_t0; // mean anomaly
+
+	} else if(e > 1) { // hyperbolic orbit ---------------- XXX: NOT TESTED
+		double M_t0;
+		M_t0 = 2*atanh(tan(orbitalPhaseAtStart/2)*sqrt((e-1)/(1+e))); // mean anomaly at t = 0
+		M_t0 = M_t0 - e*sinh(M_t0);
+
+		const double M = t * velocityAreaPerSecond / semiMajorAxis / semiMajorAxis / sqrt(e*e-1) + M_t0; // mean anomaly
+
 		// eccentric anomaly
 		// NR method to solve for E: M = E-sinh(E)
 		double E = M;
 		for (int iter=5; iter > 0; --iter) {
 			E = E - (E-e*(sinh(E))-M) / (1.0 - e*cosh(E));
 		}
+
 		// heliocentric distance
 		r = semiMajorAxis * (e*cosh(E) - 1.0);
+
 		// true anomaly (angle of orbit position)
 		cos_v = (cosh(E) - e) / (1.0 - e*cosh(E));
 		sin_v = (sqrt(e*e-1.0)*sinh(E))/ (e*cosh(E) - 1.0);
+
+		if(fabs(orbitalPhaseAtStart) > 0.01)
+		printf("--- %f %f %f | %f %f\n", sin_v, sin(M_t0), sin(orbitalPhaseAtStart), M, E);
 	}
 
 	vector3d pos = vector3d(-cos_v*r, sin_v*r, 0);
 	pos = rotMatrix * pos;
 	return pos;
+
 }
 
 // used for stepping through the orbit in small fractions
-// therefore the orbital phase at game start (mean anomalty at t = 0)
-// does not need to be taken into account
+// mean anomaly <-> true anomaly conversion doesn't have
+// to be taken into account
 vector3d Orbit::EvenSpacedPosAtTime(double t) const
 {
 	const double e = eccentricity;
-	const double M = 2*M_PI*t +orbitalPhaseAtStart;
+	double v = 2*M_PI*t +orbitalPhaseAtStart;
 	vector3d pos = vector3d(0.0f,0.0f,0.0f);
 
 	if(e < 1) {
-		// XXX: this is not really necessary in this function, v = M would do just fine
-		const double v = 2*atan(sqrt((1+e)/(1-e)) * tan(M/2.0));
 		const double r = semiMajorAxis * (1 - e*e) / (1 + e*cos(v));
 		pos = vector3d(-cos(v)*r, sin(v)*r, 0);
 	} else {
-		double v = M;
-
 		double r = semiMajorAxis * (e*e - 1) / (1 + e*cos(v));
 
 		// planet is in infinity
@@ -936,6 +948,23 @@ vector3d Orbit::EvenSpacedPosAtTime(double t) const
 	}
 	pos = rotMatrix * pos;
 	return pos;
+}
+
+double Orbit::Period() const {
+	if(eccentricity < 1 && eccentricity >= 0) {
+		return M_PI * semiMajorAxis * semiMajorAxis * sqrt(1 - eccentricity * eccentricity)/ velocityAreaPerSecond;
+	} else { // hyperbola.. period makes no sense, should not be used
+		assert(0);
+		return 0;
+	}
+}
+
+double Orbit::calc_velocity_area_per_sec(double semiMajorAxis, double centralMass, double eccentricity) {
+	return M_PI * semiMajorAxis * semiMajorAxis * sqrt(1 - eccentricity * eccentricity)/ calc_orbital_period(semiMajorAxis, centralMass);
+}
+
+double Orbit::calc_velocity_area_per_sec_gravpoint(double semiMajorAxis, double totalMass, double bodyMass, double eccentricity) {
+	return M_PI * semiMajorAxis * semiMajorAxis * sqrt(1 - eccentricity * eccentricity)/ calc_orbital_period_gravpoint(semiMajorAxis, totalMass, bodyMass);
 }
 
 double Orbit::calc_orbital_period(double semiMajorAxis, double centralMass)
@@ -1037,9 +1066,9 @@ void StarSystem::CustomGetKidsOf(SystemBody *parent, const std::vector<CustomSys
 		kid->orbit.eccentricity = csbody->eccentricity.ToDouble();
 		kid->orbit.semiMajorAxis = csbody->semiMajorAxis.ToDouble() * AU;
 		if(parent->type == SystemBody::TYPE_GRAVPOINT) // generalize Kepler's law to multiple stars
-			kid->orbit.period = Orbit::calc_orbital_period_gravpoint(kid->orbit.semiMajorAxis, parent->GetMass(), kid->GetMass());
+			kid->orbit.velocityAreaPerSecond = Orbit::calc_velocity_area_per_sec_gravpoint(kid->orbit.semiMajorAxis, parent->GetMass(), kid->GetMass(), kid->orbit.eccentricity);
 		else
-			kid->orbit.period = Orbit::calc_orbital_period(kid->orbit.semiMajorAxis, parent->GetMass());
+			kid->orbit.velocityAreaPerSecond = Orbit::calc_velocity_area_per_sec(kid->orbit.semiMajorAxis, parent->GetMass(), kid->orbit.eccentricity);
 		kid->orbit.orbitalPhaseAtStart = csbody->orbitalPhaseAtStart.ToDouble();
 		if (csbody->heightMapFilename.length() > 0) {
 			kid->heightMapFilename = csbody->heightMapFilename.c_str();
@@ -1162,7 +1191,8 @@ void StarSystem::MakeBinaryPair(SystemBody *a, SystemBody *b, fixed minDist, MTR
 
 	a->orbit.eccentricity = a->eccentricity.ToDouble();
 	a->orbit.semiMajorAxis = AU * (a->semiMajorAxis * a0).ToDouble();
-	a->orbit.period = 60*60*24*365* a->semiMajorAxis.ToDouble() * sqrt(a->semiMajorAxis.ToDouble() / m.ToDouble());
+	a->orbit.velocityAreaPerSecond = 60*60*24*365* a->semiMajorAxis.ToDouble() * sqrt(a->semiMajorAxis.ToDouble() / m.ToDouble());
+	a->orbit.velocityAreaPerSecond =  M_PI * a->orbit.semiMajorAxis * a->orbit.semiMajorAxis * sqrt(1 - a->orbit.eccentricity * a->orbit.eccentricity) / a->orbit.velocityAreaPerSecond;
 
 	const float rotX = -0.5f*float(M_PI);//(float)(rand.Double()*M_PI/2.0);
 	const float rotY = static_cast<float>(rand.Double(M_PI));
@@ -1171,7 +1201,7 @@ void StarSystem::MakeBinaryPair(SystemBody *a, SystemBody *b, fixed minDist, MTR
 
 	b->orbit.eccentricity = a->eccentricity.ToDouble();
 	b->orbit.semiMajorAxis = AU * (a->semiMajorAxis * a1).ToDouble();
-	b->orbit.period = a->orbit.period;
+	b->orbit.velocityAreaPerSecond = a->orbit.velocityAreaPerSecond;
 
 	fixed orbMin = a->semiMajorAxis - a->eccentricity*a->semiMajorAxis;
 	fixed orbMax = 2*a->semiMajorAxis - orbMin;
@@ -1766,9 +1796,9 @@ void StarSystem::MakePlanetsAround(SystemBody *primary, MTRand &rand)
 		planet->orbit.eccentricity = ecc.ToDouble();
 		planet->orbit.semiMajorAxis = semiMajorAxis.ToDouble() * AU;
 		if(primary->type == SystemBody::TYPE_GRAVPOINT) // generalize Kepler's law to multiple stars
-			planet->orbit.period = Orbit::calc_orbital_period_gravpoint(planet->orbit.semiMajorAxis, primary->GetMass(), planet->GetMass());
+			planet->orbit.velocityAreaPerSecond = Orbit::calc_velocity_area_per_sec_gravpoint(planet->orbit.semiMajorAxis, primary->GetMass(), planet->GetMass(), planet->orbit.eccentricity);
 		else
-			planet->orbit.period = Orbit::calc_orbital_period(planet->orbit.semiMajorAxis, primary->GetMass());
+			planet->orbit.velocityAreaPerSecond = Orbit::calc_velocity_area_per_sec(planet->orbit.semiMajorAxis, primary->GetMass(), planet->orbit.eccentricity);
 
 		double r1 = rand.Double(2*M_PI);		// function parameter evaluation order is implementation-dependent
 		double r2 = rand.NDouble(5);			// can't put two rands in the same expression
@@ -2225,7 +2255,7 @@ void SystemBody::PopulateAddStations(StarSystem *system)
 		sp->axialTilt = fixed(0);
 		sp->orbit.eccentricity = 0;
 		sp->orbit.semiMajorAxis = sp->semiMajorAxis.ToDouble()*AU;
-		sp->orbit.period = Orbit::calc_orbital_period(sp->orbit.semiMajorAxis, this->mass.ToDouble() * EARTH_MASS);
+		sp->orbit.velocityAreaPerSecond = Orbit::calc_velocity_area_per_sec(sp->orbit.semiMajorAxis, this->mass.ToDouble() * EARTH_MASS, sp->orbit.eccentricity);
 		sp->orbit.rotMatrix = matrix3x3d::Identity();
 		children.insert(children.begin(), sp);
 		system->m_spaceStations.push_back(sp);

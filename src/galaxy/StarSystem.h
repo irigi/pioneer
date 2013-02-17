@@ -38,11 +38,15 @@ struct Orbit {
 	/* duplicated from SystemBody... should remove probably */
 	static double calc_orbital_period(double semiMajorAxis, double centralMass);
 	static double calc_orbital_period_gravpoint(double semiMajorAxis, double totalMass, double bodyMass);
+	static double calc_velocity_area_per_sec(double semiMajorAxis, double centralMass, double eccentricity);
+	static double calc_velocity_area_per_sec_gravpoint(double semiMajorAxis, double totalMass, double bodyMass, double eccentricity);
+
+	double Period() const;
 	double eccentricity;
 	double semiMajorAxis;
 	double orbitalPhaseAtStart; // 0 to 2 pi radians
 	/* dup " " --------------------------------------- */
-	double period; // seconds
+	double velocityAreaPerSecond; // seconds
 	matrix3x3d rotMatrix;
 };
 

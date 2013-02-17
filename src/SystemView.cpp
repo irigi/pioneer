@@ -166,7 +166,7 @@ void SystemView::OnClickObject(SystemBody *b)
 
 		desc += std::string(Lang::ORBITAL_PERIOD);
 	desc += ":\n";
-		data += stringf(Lang::N_DAYS, formatarg("days", b->orbit.period / (24*60*60))) + "\n";
+		data += stringf(Lang::N_DAYS, formatarg("days", b->orbit.Period() / (24*60*60))) + "\n";
 	}
 	m_infoLabel->SetText(desc);
 	m_infoText->SetText(data);
@@ -227,7 +227,9 @@ void SystemView::PutBody(SystemBody *b, vector3d offset, const matrix4x4f &trans
 	Frame * fram = Pi::player->GetFrame();
 	if(fram->IsRotFrame()) fram = fram->GetNonRotFrame();
 	if(fram->GetSystemBody() == b && fram->GetSystemBody()->GetMass() > 0) {
-		PutOrbit(Pi::player->ReturnOrbit(), offset, Color(1.0f, 0.0f, 0.0f), b->GetRadius());
+		Orbit * playerOrbit = Pi::player->ReturnOrbit();
+		PutOrbit(playerOrbit, offset, Color(1.0f, 0.0f, 0.0f), b->GetRadius());
+		PutSelectionBox(offset + playerOrbit->OrbitalPosAtTime(0)* double(m_zoom), Color(1.0f, 0.0f, 0.0f));
 	}
 
 	if (b->children.size()) for(std::vector<SystemBody*>::iterator kid = b->children.begin(); kid != b->children.end(); ++kid) {
