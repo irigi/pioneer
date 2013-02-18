@@ -302,8 +302,8 @@ Orbit *DynamicBody::ReturnOrbit() {
 	ret->semiMajorAxis = ret->semiMajorAxis/fabs(1.0-ret->eccentricity);
 
 	// The formulas for rotation matrix were derived based on following assumptions:
-	//	1. Trajectory follows Kepler's law and vector {-r cos(v), -r sin(v), 0}, r(t) and v(t) are parameters.
-	//	2. Correct transformation must transform {0,0,LL} to ang and {-r_now cos(orbitalPhaseAtStart), -r_now sin(orbitalPhaseAtStart), 0} to pos.
+	//	1. Trajectory follows Kepler's law and vector {-r cos(v), r sin(v), 0}, r(t) and v(t) are parameters.
+	//	2. Correct transformation must transform {0,0,LL} to ang and {-r_now cos(orbitalPhaseAtStart), r_now sin(orbitalPhaseAtStart), 0} to pos.
 	//  3. orbitalPhaseAtStart (=offset) is calculated from r = a ((e^2 - 1)/(1 + e cos(v) ))
 	double angle1 = acos(Clamp(ang.z/LL ,-1 + 1e-6,1 - 1e-6)) * (ang.x > 0 ? -1 : 1),
 			angle2 = asin(Clamp(ang.y / LL / sqrt(1.0 - ang.z*ang.z/LL/LL) ,-1 + 1e-6,1 - 1e-6) ) * (ang.x > 0 ? -1 : 1);
@@ -336,12 +336,10 @@ Orbit *DynamicBody::ReturnOrbit() {
 		}
 	}
 
-	// matrix3x3d::RotateX(M_PI) and minus sign before offset changes solution above, derived for orbits {-r cos(v), -r sin(v), 0}
-	// to {-r cos(v), -r sin(v), 0}
-	ret->rotMatrix = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(cc - offset) * matrix3x3d::RotateX(M_PI);
+	ret->rotMatrix = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(cc - offset);
 	ret->velocityAreaPerSecond = Orbit::calc_velocity_area_per_sec(ret->semiMajorAxis, mass,ret->eccentricity);
 
-	ret->orbitalPhaseAtStart = -offset; // in time t = 0
+	ret->orbitalPhaseAtStart = offset; // in time t = 0
 
 	double M_t0; // mean anomaly at t = 0
 	const double e = ret->eccentricity;

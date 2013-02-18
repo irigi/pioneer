@@ -10,6 +10,7 @@
 #include "LuaNameGen.h"
 #include <map>
 #include "utils.h"
+#include "Game.h"
 #include "Lang.h"
 #include "StringF.h"
 
@@ -864,15 +865,22 @@ double SystemBody::CalcSurfaceGravity() const
 	}
 }
 
+double Orbit::MeanAnomalyAtTime(double time) const {
+	const double e = eccentricity;
+	if(e >= 0 && e < 1) { // elliptic orbit
+		return 2.0*M_PI*time / Period() + orbitalPhaseAtStart; // mean anomaly
+	} else {
+		return time * velocityAreaPerSecond / semiMajorAxis / semiMajorAxis / sqrt(e*e-1) + orbitalPhaseAtStart; // mean anomaly
+	}
+}
+
 vector3d Orbit::OrbitalPosAtTime(double t) const
 {
 	const double e = eccentricity;
-	const double M_t0 = orbitalPhaseAtStart;
 	double r = 0, cos_v = 0, sin_v = 0;
+	const double M = MeanAnomalyAtTime(t); // mean anomaly
 
 	if(e >= 0 && e < 1) { // elliptic orbit
-		const double M = 2.0*M_PI*t / Period() + M_t0; // mean anomaly
-
 		// eccentric anomaly
 		// NR method to solve for E: M = E-sin(E)
 		double E = M;
@@ -886,8 +894,6 @@ vector3d Orbit::OrbitalPosAtTime(double t) const
 		sin_v = (sqrt(1.0-e*e)*sin(E))/ (1.0 - e*cos(E));
 
 	} else if(e > 1) { // hyperbolic orbit
-		const double M = t * velocityAreaPerSecond / semiMajorAxis / semiMajorAxis / sqrt(e*e-1) + M_t0; // mean anomaly
-
 		// eccentric anomaly
 		// NR method to solve for E: M = E-sinh(E)
 		// sinh E and cosh E are solved directly, because of inherent numerical instability of tanh(k arctanh x)
@@ -898,8 +904,8 @@ vector3d Orbit::OrbitalPosAtTime(double t) const
 
 		ch = sqrt(1 + sh*sh);
 
-		if(fabs(orbitalPhaseAtStart) > 0.1)
-			printf(" %f %f | %f %f %f\n", t, M, velocityAreaPerSecond, sh, e);
+		//if(fabs(orbitalPhaseAtStart) > 0.1)
+		//	printf(" %f %f | %f %f %f\n", t, M, velocityAreaPerSecond, eccentricity, semiMajorAxis);
 
 		// heliocentric distance
 		r = semiMajorAxis * (e*ch - 1.0);
@@ -921,13 +927,16 @@ vector3d Orbit::OrbitalPosAtTime(double t) const
 vector3d Orbit::EvenSpacedPosTrajectory(double angle) const
 {
 	const double e = eccentricity;
-	double v = 2*M_PI*angle +TrueAnomaly(orbitalPhaseAtStart);
 	vector3d pos = vector3d(0.0f,0.0f,0.0f);
 
 	if(e < 1) {
+		double v = 2*M_PI*angle +TrueAnomaly(MeanAnomalyAtTime(Pi::game->GetTime()));
 		const double r = semiMajorAxis * (1 - e*e) / (1 + e*cos(v));
 		pos = vector3d(-cos(v)*r, sin(v)*r, 0);
 	} else {
+		// For hyperbolic trajectories, mean anomaly has opposite sign to true anomaly, therefore trajectories which go forward
+		// in time decrease their true anomaly. Yes, it is confusing.
+		double v = -2*M_PI*angle +TrueAnomaly(MeanAnomalyAtTime(Pi::game->GetTime()));
 		double r = semiMajorAxis * (e*e - 1) / (1 + e*cos(v));
 
 		// planet is in infinity
@@ -992,16 +1001,16 @@ double Orbit::TrueAnomaly(double MeanAnomaly) const {
 
 double Orbit::calc_velocity_area_per_sec(double semiMajorAxis, double centralMass, double eccentricity) {
 	if(eccentricity < 1)
-		return M_PI * semiMajorAxis * semiMajorAxis * sqrt(1 - eccentricity * eccentricity)/ calc_orbital_period(semiMajorAxis, centralMass);
+		return 2 * M_PI * semiMajorAxis * semiMajorAxis * sqrt(1 - eccentricity * eccentricity)/ calc_orbital_period(semiMajorAxis, centralMass);
 	else
-		return M_PI * semiMajorAxis * semiMajorAxis * sqrt(eccentricity * eccentricity - 1)/ calc_orbital_period(semiMajorAxis, centralMass);
+		return 2 * M_PI * semiMajorAxis * semiMajorAxis * sqrt(eccentricity * eccentricity - 1)/ calc_orbital_period(semiMajorAxis, centralMass);
 }
 
 double Orbit::calc_velocity_area_per_sec_gravpoint(double semiMajorAxis, double totalMass, double bodyMass, double eccentricity) {
 	if(eccentricity < 1) {
-		return M_PI * semiMajorAxis * semiMajorAxis * sqrt(1 - eccentricity * eccentricity)/ calc_orbital_period_gravpoint(semiMajorAxis, totalMass, bodyMass);
+		return 2 * M_PI * semiMajorAxis * semiMajorAxis * sqrt(1 - eccentricity * eccentricity)/ calc_orbital_period_gravpoint(semiMajorAxis, totalMass, bodyMass);
 	} else {
-		return M_PI * semiMajorAxis * semiMajorAxis * sqrt(eccentricity * eccentricity - 1)/ calc_orbital_period_gravpoint(semiMajorAxis, totalMass, bodyMass);
+		return 2 * M_PI * semiMajorAxis * semiMajorAxis * sqrt(eccentricity * eccentricity - 1)/ calc_orbital_period_gravpoint(semiMajorAxis, totalMass, bodyMass);
 	}
 }
 
