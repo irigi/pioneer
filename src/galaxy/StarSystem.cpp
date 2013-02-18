@@ -915,7 +915,6 @@ vector3d Orbit::OrbitalPosAtTime(double t) const
 	vector3d pos = vector3d(-cos_v*r, sin_v*r, 0);
 	pos = rotMatrix * pos;
 	return pos;
-
 }
 
 // used for stepping through the orbit in small fractions
@@ -1249,8 +1248,7 @@ void StarSystem::MakeBinaryPair(SystemBody *a, SystemBody *b, fixed minDist, MTR
 
 	a->orbit.eccentricity = a->eccentricity.ToDouble();
 	a->orbit.semiMajorAxis = AU * (a->semiMajorAxis * a0).ToDouble();
-	a->orbit.velocityAreaPerSecond = 60*60*24*365* a->semiMajorAxis.ToDouble() * sqrt(a->semiMajorAxis.ToDouble() / m.ToDouble());
-	a->orbit.velocityAreaPerSecond =  M_PI * a->orbit.semiMajorAxis * a->orbit.semiMajorAxis * sqrt(1 - a->orbit.eccentricity * a->orbit.eccentricity) / a->orbit.velocityAreaPerSecond;
+	a->orbit.velocityAreaPerSecond = Orbit::calc_velocity_area_per_sec_gravpoint(a->orbit.semiMajorAxis, a->GetMass() + b->GetMass(), a->GetMass(), a->orbit.eccentricity);
 
 	const float rotX = -0.5f*float(M_PI);//(float)(rand.Double()*M_PI/2.0);
 	const float rotY = static_cast<float>(rand.Double(M_PI));
@@ -1260,6 +1258,7 @@ void StarSystem::MakeBinaryPair(SystemBody *a, SystemBody *b, fixed minDist, MTR
 	b->orbit.eccentricity = a->eccentricity.ToDouble();
 	b->orbit.semiMajorAxis = AU * (a->semiMajorAxis * a1).ToDouble();
 	b->orbit.velocityAreaPerSecond = a->orbit.velocityAreaPerSecond;
+	b->orbit.velocityAreaPerSecond = Orbit::calc_velocity_area_per_sec_gravpoint(b->orbit.semiMajorAxis, a->GetMass() + b->GetMass(), b->GetMass(), b->orbit.eccentricity);
 
 	fixed orbMin = a->semiMajorAxis - a->eccentricity*a->semiMajorAxis;
 	fixed orbMax = 2*a->semiMajorAxis - orbMin;
