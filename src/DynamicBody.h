@@ -8,7 +8,7 @@
 #include "ModelBody.h"
 #include "vector3.h"
 #include "matrix4x4.h"
-#include "galaxy/StarSystem.h"
+#include "Orbit.h"
 
 class DynamicBody: public ModelBody {
 public:

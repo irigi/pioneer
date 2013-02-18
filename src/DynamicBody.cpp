@@ -346,23 +346,7 @@ Orbit *DynamicBody::ReturnOrbit() {
 	ret->rotMatrix = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(cc - offset) * matrix3x3d::RotateX(M_PI);
 	ret->velocityAreaPerSecond = Orbit::calc_velocity_area_per_sec(ret->semiMajorAxis, mass,ret->eccentricity);
 
-	ret->orbitalPhaseAtStart = -offset; // in time t = 0
-
-	double M_t0; // mean anomaly at t = 0
-	const double e = ret->eccentricity;
-	if(e > 0 && e < 1) {
-		M_t0 = 2*atan(tan(ret->orbitalPhaseAtStart/2)*sqrt((1-e)/(1+e)));
-		M_t0 = M_t0 - e*sin(M_t0);
-		M_t0 -= Pi::game->GetTime() *2.0*M_PI/ ret->Period();
-	} else {
-		// For hyperbolic trajectories, mean anomaly has opposite sign to true anomaly, therefore trajectories which go forward
-		// in time decrease their true anomaly. Yes, it is confusing.
-		M_t0 = 2*atanh(tan(ret->orbitalPhaseAtStart/2)*sqrt((e-1)/(1+e)));
-		M_t0 = M_t0 - e*sinh(M_t0);
-		M_t0 += Pi::game->GetTime()  * 2 * ret->velocityAreaPerSecond / ret->semiMajorAxis / ret->semiMajorAxis / sqrt(e*e-1);
-	}
-
-	ret->orbitalPhaseAtStart = M_t0;
+	ret->orbitalPhaseAtStart = ret->MeanAnomalyFromTrueAnomaly(-offset);
 
 	return ret;
 }

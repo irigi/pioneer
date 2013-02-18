@@ -98,6 +98,7 @@ noinst_HEADERS = \
 	ModelViewer.h \
 	Object.h \
 	ObjectViewerView.h \
+	Orbit.h \
 	OS.h \
 	PersistSystemData.h \
 	Pi.h \
@@ -243,6 +244,7 @@ pioneer_SOURCES	= \
 	ModManager.cpp \
 	ModelViewer.cpp \
 	ObjectViewerView.cpp \
+	Orbit.cpp \
 	Pi.cpp \
 	Planet.cpp \
 	Player.cpp \
