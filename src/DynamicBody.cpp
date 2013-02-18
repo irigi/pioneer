@@ -296,14 +296,19 @@ Orbit *DynamicBody::ReturnOrbit() {
 	if(ret->eccentricity == 1.0) ret->eccentricity = 1-1e-6;
 	ret->eccentricity = sqrt(ret->eccentricity);
 
+	// lines represent these quantities:
+	// 		(e M G)^2
+	// 		M G (e - 1) / 2 EE, always positive (EE and (e-1) change sign
+	// 		M G / 2 EE,
+	// which is a (http://en.wikipedia.org/wiki/Semi-major_axis); a of hyperbola is taken as positive here
 	ret->semiMajorAxis = 2*EE*LL*LL + pow(mass*6.672e-11, 2);
 	if(ret->semiMajorAxis < 0) ret->semiMajorAxis  = 0;
 	ret->semiMajorAxis = (sqrt(ret->semiMajorAxis ) - mass*6.672e-11)/2/EE;
 	ret->semiMajorAxis = ret->semiMajorAxis/fabs(1.0-ret->eccentricity);
 
 	// The formulas for rotation matrix were derived based on following assumptions:
-	//	1. Trajectory follows Kepler's law and vector {-r cos(v), r sin(v), 0}, r(t) and v(t) are parameters.
-	//	2. Correct transformation must transform {0,0,LL} to ang and {-r_now cos(orbitalPhaseAtStart), r_now sin(orbitalPhaseAtStart), 0} to pos.
+	//	1. Trajectory follows Kepler's law and vector {-r cos(v), -r sin(v), 0}, r(t) and v(t) are parameters.
+	//	2. Correct transformation must transform {0,0,LL} to ang and {-r_now cos(orbitalPhaseAtStart), -r_now sin(orbitalPhaseAtStart), 0} to pos.
 	//  3. orbitalPhaseAtStart (=offset) is calculated from r = a ((e^2 - 1)/(1 + e cos(v) ))
 	double angle1 = acos(Clamp(ang.z/LL ,-1 + 1e-6,1 - 1e-6)) * (ang.x > 0 ? -1 : 1),
 			angle2 = asin(Clamp(ang.y / LL / sqrt(1.0 - ang.z*ang.z/LL/LL) ,-1 + 1e-6,1 - 1e-6) ) * (ang.x > 0 ? -1 : 1);
@@ -322,7 +327,7 @@ Orbit *DynamicBody::ReturnOrbit() {
 			off = ret->semiMajorAxis*(-1 + ret->eccentricity*ret->eccentricity) - r_now;
 		}
 
-		// correct sign of offset is given by sign pos.Dot(vel) (heading towards apogeum or porigeum?]
+		// correct sign of offset is given by sign pos.Dot(vel) (heading towards apohelion or perihelion?]
 		off = Clamp(off/(r_now * ret->eccentricity), -1 + 1e-6,1 - 1e-6);
 		off = -pos.Dot(vel)/fabs(pos.Dot(vel))*acos(off);
 
@@ -336,21 +341,25 @@ Orbit *DynamicBody::ReturnOrbit() {
 		}
 	}
 
-	ret->rotMatrix = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(cc - offset);
+	// matrix3x3d::RotateX(M_PI) and minus sign before offset changes solution above, derived for orbits {-r cos(v), -r sin(v), 0}
+	// to {-r cos(v), -r sin(v), 0}
+	ret->rotMatrix = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(cc - offset) * matrix3x3d::RotateX(M_PI);
 	ret->velocityAreaPerSecond = Orbit::calc_velocity_area_per_sec(ret->semiMajorAxis, mass,ret->eccentricity);
 
-	ret->orbitalPhaseAtStart = offset; // in time t = 0
+	ret->orbitalPhaseAtStart = -offset; // in time t = 0
 
 	double M_t0; // mean anomaly at t = 0
 	const double e = ret->eccentricity;
 	if(e > 0 && e < 1) {
 		M_t0 = 2*atan(tan(ret->orbitalPhaseAtStart/2)*sqrt((1-e)/(1+e)));
 		M_t0 = M_t0 - e*sin(M_t0);
-		M_t0 -= Pi::game->GetTime() * ret->velocityAreaPerSecond / ret->semiMajorAxis / ret->semiMajorAxis / sqrt(1 - e*e);
+		M_t0 -= Pi::game->GetTime() *2.0*M_PI/ ret->Period();
 	} else {
+		// For hyperbolic trajectories, mean anomaly has opposite sign to true anomaly, therefore trajectories which go forward
+		// in time decrease their true anomaly. Yes, it is confusing.
 		M_t0 = 2*atanh(tan(ret->orbitalPhaseAtStart/2)*sqrt((e-1)/(1+e)));
 		M_t0 = M_t0 - e*sinh(M_t0);
-		M_t0 -= Pi::game->GetTime()  * ret->velocityAreaPerSecond / ret->semiMajorAxis / ret->semiMajorAxis / sqrt(e*e-1);
+		M_t0 += Pi::game->GetTime()  * 2 * ret->velocityAreaPerSecond / ret->semiMajorAxis / ret->semiMajorAxis / sqrt(e*e-1);
 	}
 
 	ret->orbitalPhaseAtStart = M_t0;

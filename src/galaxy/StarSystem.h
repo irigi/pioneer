@@ -44,6 +44,8 @@ struct Orbit {
 	double Period() const;
 	double TrueAnomaly(double MeanAnomaly) const;
 	double MeanAnomalyAtTime(double time) const;
+	vector3d Apogeum() const;
+	vector3d Perigeum() const;
 	double eccentricity;
 	double semiMajorAxis;
 	double orbitalPhaseAtStart; // 0 to 2 pi radians

@@ -870,7 +870,7 @@ double Orbit::MeanAnomalyAtTime(double time) const {
 	if(e >= 0 && e < 1) { // elliptic orbit
 		return 2.0*M_PI*time / Period() + orbitalPhaseAtStart; // mean anomaly
 	} else {
-		return time * velocityAreaPerSecond / semiMajorAxis / semiMajorAxis / sqrt(e*e-1) + orbitalPhaseAtStart; // mean anomaly
+		return -2 * time * velocityAreaPerSecond / semiMajorAxis / semiMajorAxis / sqrt(e*e-1) + orbitalPhaseAtStart; // mean anomaly
 	}
 }
 
@@ -904,9 +904,6 @@ vector3d Orbit::OrbitalPosAtTime(double t) const
 
 		ch = sqrt(1 + sh*sh);
 
-		//if(fabs(orbitalPhaseAtStart) > 0.1)
-		//	printf(" %f %f | %f %f %f\n", t, M, velocityAreaPerSecond, eccentricity, semiMajorAxis);
-
 		// heliocentric distance
 		r = semiMajorAxis * (e*ch - 1.0);
 
@@ -934,9 +931,7 @@ vector3d Orbit::EvenSpacedPosTrajectory(double angle) const
 		const double r = semiMajorAxis * (1 - e*e) / (1 + e*cos(v));
 		pos = vector3d(-cos(v)*r, sin(v)*r, 0);
 	} else {
-		// For hyperbolic trajectories, mean anomaly has opposite sign to true anomaly, therefore trajectories which go forward
-		// in time decrease their true anomaly. Yes, it is confusing.
-		double v = -2*M_PI*angle +TrueAnomaly(MeanAnomalyAtTime(Pi::game->GetTime()));
+		double v = 2*M_PI*angle +TrueAnomaly(MeanAnomalyAtTime(Pi::game->GetTime()));
 		double r = semiMajorAxis * (e*e - 1) / (1 + e*cos(v));
 
 		// planet is in infinity
@@ -999,18 +994,34 @@ double Orbit::TrueAnomaly(double MeanAnomaly) const {
 	return v;
 }
 
+vector3d Orbit::Apogeum() const {
+	if(eccentricity < 1) {
+		return semiMajorAxis * (1 + eccentricity) * (rotMatrix * vector3d(1,0,0));
+	} else {
+		return vector3d(0,0,0);
+	}
+}
+
+vector3d Orbit::Perigeum() const {
+	if(eccentricity < 1) {
+		return semiMajorAxis * (1 - eccentricity) * (rotMatrix * vector3d(-1,0,0));
+	} else {
+		return semiMajorAxis * (eccentricity - 1) * (rotMatrix * vector3d(-1,0,0));
+	}
+}
+
 double Orbit::calc_velocity_area_per_sec(double semiMajorAxis, double centralMass, double eccentricity) {
 	if(eccentricity < 1)
-		return 2 * M_PI * semiMajorAxis * semiMajorAxis * sqrt(1 - eccentricity * eccentricity)/ calc_orbital_period(semiMajorAxis, centralMass);
+		return M_PI * semiMajorAxis * semiMajorAxis * sqrt(1 - eccentricity * eccentricity)/ calc_orbital_period(semiMajorAxis, centralMass);
 	else
-		return 2 * M_PI * semiMajorAxis * semiMajorAxis * sqrt(eccentricity * eccentricity - 1)/ calc_orbital_period(semiMajorAxis, centralMass);
+		return M_PI * semiMajorAxis * semiMajorAxis * sqrt(eccentricity * eccentricity - 1)/ calc_orbital_period(semiMajorAxis, centralMass);
 }
 
 double Orbit::calc_velocity_area_per_sec_gravpoint(double semiMajorAxis, double totalMass, double bodyMass, double eccentricity) {
 	if(eccentricity < 1) {
-		return 2 * M_PI * semiMajorAxis * semiMajorAxis * sqrt(1 - eccentricity * eccentricity)/ calc_orbital_period_gravpoint(semiMajorAxis, totalMass, bodyMass);
+		return M_PI * semiMajorAxis * semiMajorAxis * sqrt(1 - eccentricity * eccentricity)/ calc_orbital_period_gravpoint(semiMajorAxis, totalMass, bodyMass);
 	} else {
-		return 2 * M_PI * semiMajorAxis * semiMajorAxis * sqrt(eccentricity * eccentricity - 1)/ calc_orbital_period_gravpoint(semiMajorAxis, totalMass, bodyMass);
+		return M_PI * semiMajorAxis * semiMajorAxis * sqrt(eccentricity * eccentricity - 1)/ calc_orbital_period_gravpoint(semiMajorAxis, totalMass, bodyMass);
 	}
 }
 
