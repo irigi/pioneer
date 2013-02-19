@@ -19,7 +19,6 @@ struct Orbit {
 	static double calc_velocity_area_per_sec(double semiMajorAxis, double centralMass, double eccentricity);
 	static double calc_velocity_area_per_sec_gravpoint(double semiMajorAxis, double totalMass, double bodyMass, double eccentricity);
 
-	static vector3d calc_velocity_to_transfer_orbit(double time, vector3d cur_pos, vector3d targ_pos, double mass);
 	static Orbit *calc_orbit(Orbit * ret, vector3d current_pos, vector3d current_vel, double mass);
 
 	double Period() const;
