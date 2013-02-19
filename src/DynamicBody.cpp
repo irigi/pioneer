@@ -262,8 +262,6 @@ bool DynamicBody::OnCollision(Object *o, Uint32 flags, double relVel)
 
 // return parameters for orbit of any body, gives both elliptic and hyperbolic trajectories
 Orbit *DynamicBody::ReturnOrbit() {
-	Orbit *ret = &(this->orbit);
-
 	Frame *fram = this->GetFrame();
 	if(fram->IsRotFrame()) fram = fram->GetNonRotFrame();
 	double mass = fram->GetSystemBody()->GetMass();
@@ -271,82 +269,6 @@ Orbit *DynamicBody::ReturnOrbit() {
 	// current velocity and position with respect to non-rotating frame
 	vector3d vel = this->GetVelocityRelTo(fram);
 	vector3d pos = this->GetPositionRelTo(fram);
-	double r_now = pos.Length() + 1e-12;
-	double v_now = vel.Length() + 1e-12;
 
-	// angular momentum
-	vector3d ang = -(vel.Cross(pos));
-	double LL =ang.Length() + 1e-12;
-
-	// total energy
-	double EE = vel.LengthSqr()/2 - mass*6.672e-11/r_now;
-
-	if(mass <= 1e-3 || r_now <= 1e-3 || v_now <= 1e-3 || fabs(EE) <= 1e-12 || 1.0-ang.z*ang.z/LL/LL < 0) {
-		ret->eccentricity = 0;
-		ret->semiMajorAxis = 0;
-		ret->velocityAreaPerSecond = 0;
-		ret->orbitalPhaseAtStart = 0;
-		ret->rotMatrix =  matrix3x3d::RotateY(0);
-		return ret;
-	}
-
-	// http://en.wikipedia.org/wiki/Orbital_eccentricity
-	ret->eccentricity = 1 + 2*EE*LL*LL/pow(mass*6.672e-11, 2);
-	if(ret->eccentricity < 1e-12) ret->eccentricity = 1e-12;
-	if(ret->eccentricity == 1.0) ret->eccentricity = 1-1e-6;
-	ret->eccentricity = sqrt(ret->eccentricity);
-
-	// lines represent these quantities:
-	// 		(e M G)^2
-	// 		M G (e - 1) / 2 EE, always positive (EE and (e-1) change sign
-	// 		M G / 2 EE,
-	// which is a (http://en.wikipedia.org/wiki/Semi-major_axis); a of hyperbola is taken as positive here
-	ret->semiMajorAxis = 2*EE*LL*LL + pow(mass*6.672e-11, 2);
-	if(ret->semiMajorAxis < 0) ret->semiMajorAxis  = 0;
-	ret->semiMajorAxis = (sqrt(ret->semiMajorAxis ) - mass*6.672e-11)/2/EE;
-	ret->semiMajorAxis = ret->semiMajorAxis/fabs(1.0-ret->eccentricity);
-
-	// The formulas for rotation matrix were derived based on following assumptions:
-	//	1. Trajectory follows Kepler's law and vector {-r cos(v), -r sin(v), 0}, r(t) and v(t) are parameters.
-	//	2. Correct transformation must transform {0,0,LL} to ang and {-r_now cos(orbitalPhaseAtStart), -r_now sin(orbitalPhaseAtStart), 0} to pos.
-	//  3. orbitalPhaseAtStart (=offset) is calculated from r = a ((e^2 - 1)/(1 + e cos(v) ))
-	double angle1 = acos(Clamp(ang.z/LL ,-1 + 1e-6,1 - 1e-6)) * (ang.x > 0 ? -1 : 1),
-			angle2 = asin(Clamp(ang.y / LL / sqrt(1.0 - ang.z*ang.z/LL/LL) ,-1 + 1e-6,1 - 1e-6) ) * (ang.x > 0 ? -1 : 1);
-
-	// There are two possible solutions of the equation and the only way how to find the correct one
-	// I know about is to try both and check if the position is transformed correctly. We minimize the difference
-	// of the transformed  position and expected result.
-	double value = 1e99, offset = 0, cc = 0;
-	for(int i = -1; i <= 1; i += 2) {
-		double off = 0, ccc = 0;
-		matrix3x3d mat;
-
-		if(ret->eccentricity < 1) {
-			off = ret->semiMajorAxis*(1 - ret->eccentricity*ret->eccentricity) - r_now;
-		} else {
-			off = ret->semiMajorAxis*(-1 + ret->eccentricity*ret->eccentricity) - r_now;
-		}
-
-		// correct sign of offset is given by sign pos.Dot(vel) (heading towards apohelion or perihelion?]
-		off = Clamp(off/(r_now * ret->eccentricity), -1 + 1e-6,1 - 1e-6);
-		off = -pos.Dot(vel)/fabs(pos.Dot(vel))*acos(off);
-
-		ccc = acos(-pos.z/r_now/sin(angle1)) * i;
-		mat = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(ccc - off);
-
-		if(((mat*vector3d(-r_now*cos(off),r_now*sin(off),0)) - pos).Length() < value) {
-			value = ((mat*vector3d(-r_now*cos(off),r_now*sin(off),0)) - pos).Length();
-			cc = ccc;
-			offset = off;
-		}
-	}
-
-	// matrix3x3d::RotateX(M_PI) and minus sign before offset changes solution above, derived for orbits {-r cos(v), -r sin(v), 0}
-	// to {-r cos(v), -r sin(v), 0}
-	ret->rotMatrix = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(cc - offset) * matrix3x3d::RotateX(M_PI);
-	ret->velocityAreaPerSecond = Orbit::calc_velocity_area_per_sec(ret->semiMajorAxis, mass,ret->eccentricity);
-
-	ret->orbitalPhaseAtStart = ret->MeanAnomalyFromTrueAnomaly(-offset);
-
-	return ret;
+	return Orbit::calc_orbit(&(this->orbit), pos, vel, mass);
 }

@@ -216,3 +216,136 @@ double Orbit::calc_orbital_period_gravpoint(double semiMajorAxis, double totalMa
 	const double a3 = a*a*a;
 	return 2.0 * M_PI * sqrt(a3 / (G * totalMass));
 }
+
+Orbit * Orbit::calc_orbit(Orbit * ret, vector3d pos, vector3d vel, double mass)  {
+	double r_now = pos.Length() + 1e-12;
+	double v_now = vel.Length() + 1e-12;
+
+	// angular momentum
+	vector3d ang = -(vel.Cross(pos));
+	double LL =ang.Length() + 1e-12;
+
+	// total energy
+	double EE = vel.LengthSqr()/2 - mass*6.672e-11/r_now;
+
+	if(mass <= 1e-3 || r_now <= 1e-3 || v_now <= 1e-3 || fabs(EE) <= 1e-12 || 1.0-ang.z*ang.z/LL/LL < 0) {
+		ret->eccentricity = 0;
+		ret->semiMajorAxis = 0;
+		ret->velocityAreaPerSecond = 0;
+		ret->orbitalPhaseAtStart = 0;
+		ret->rotMatrix =  matrix3x3d::RotateY(0);
+		return ret;
+	}
+
+	// http://en.wikipedia.org/wiki/Orbital_eccentricity
+	ret->eccentricity = 1 + 2*EE*LL*LL/pow(mass*6.672e-11, 2);
+	if(ret->eccentricity < 1e-12) ret->eccentricity = 1e-12;
+	if(ret->eccentricity == 1.0) ret->eccentricity = 1-1e-6;
+	ret->eccentricity = sqrt(ret->eccentricity);
+
+	// lines represent these quantities:
+	// 		(e M G)^2
+	// 		M G (e - 1) / 2 EE, always positive (EE and (e-1) change sign
+	// 		M G / 2 EE,
+	// which is a (http://en.wikipedia.org/wiki/Semi-major_axis); a of hyperbola is taken as positive here
+	ret->semiMajorAxis = 2*EE*LL*LL + pow(mass*6.672e-11, 2);
+	if(ret->semiMajorAxis < 0) ret->semiMajorAxis  = 0;
+	ret->semiMajorAxis = (sqrt(ret->semiMajorAxis ) - mass*6.672e-11)/2/EE;
+	ret->semiMajorAxis = ret->semiMajorAxis/fabs(1.0-ret->eccentricity);
+
+	// The formulas for rotation matrix were derived based on following assumptions:
+	//	1. Trajectory follows Kepler's law and vector {-r cos(v), -r sin(v), 0}, r(t) and v(t) are parameters.
+	//	2. Correct transformation must transform {0,0,LL} to ang and {-r_now cos(orbitalPhaseAtStart), -r_now sin(orbitalPhaseAtStart), 0} to pos.
+	//  3. orbitalPhaseAtStart (=offset) is calculated from r = a ((e^2 - 1)/(1 + e cos(v) ))
+	double angle1 = acos(Clamp(ang.z/LL ,-1 + 1e-6,1 - 1e-6)) * (ang.x > 0 ? -1 : 1),
+			angle2 = asin(Clamp(ang.y / LL / sqrt(1.0 - ang.z*ang.z/LL/LL) ,-1 + 1e-6,1 - 1e-6) ) * (ang.x > 0 ? -1 : 1);
+
+	// There are two possible solutions of the equation and the only way how to find the correct one
+	// I know about is to try both and check if the position is transformed correctly. We minimize the difference
+	// of the transformed  position and expected result.
+	double value = 1e99, offset = 0, cc = 0;
+	for(int i = -1; i <= 1; i += 2) {
+		double off = 0, ccc = 0;
+		matrix3x3d mat;
+
+		if(ret->eccentricity < 1) {
+			off = ret->semiMajorAxis*(1 - ret->eccentricity*ret->eccentricity) - r_now;
+		} else {
+			off = ret->semiMajorAxis*(-1 + ret->eccentricity*ret->eccentricity) - r_now;
+		}
+
+		// correct sign of offset is given by sign pos.Dot(vel) (heading towards apohelion or perihelion?]
+		off = Clamp(off/(r_now * ret->eccentricity), -1 + 1e-6,1 - 1e-6);
+		off = -pos.Dot(vel)/fabs(pos.Dot(vel))*acos(off);
+
+		ccc = acos(-pos.z/r_now/sin(angle1)) * i;
+		mat = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(ccc - off);
+
+		if(((mat*vector3d(-r_now*cos(off),r_now*sin(off),0)) - pos).Length() < value) {
+			value = ((mat*vector3d(-r_now*cos(off),r_now*sin(off),0)) - pos).Length();
+			cc = ccc;
+			offset = off;
+		}
+	}
+
+	// matrix3x3d::RotateX(M_PI) and minus sign before offset changes solution above, derived for orbits {-r cos(v), -r sin(v), 0}
+	// to {-r cos(v), -r sin(v), 0}
+	ret->rotMatrix = matrix3x3d::RotateZ(angle2) * matrix3x3d::RotateY(angle1) * matrix3x3d::RotateZ(cc - offset) * matrix3x3d::RotateX(M_PI);
+	ret->velocityAreaPerSecond = Orbit::calc_velocity_area_per_sec(ret->semiMajorAxis, mass,ret->eccentricity);
+
+	ret->orbitalPhaseAtStart = ret->MeanAnomalyFromTrueAnomaly(-offset);
+
+	return ret;
+}
+
+double timeToTravelTrajectorySegment(double a, double e, double v1, double v2, double mass) {
+
+	// area of ellipse segment,
+	// integrate [a(1-e^2)/(1+e cos(v))]^2 / 2 from v1 to v2, v1 < v2, v1, v2 from -PI to PI
+	double area = (pow(a,2)*sqrt(-1 + pow(e,2))*
+		     (2*atanh(1/(((1 + e)*(1/tan(v1/2.0)))/sqrt(-1 + pow(e,2))) ) -
+		       2*atanh(1/(((1 + e)*(1/tan(v2/2.0)))/sqrt(-1 + pow(e,2))) ) +
+		       e*sqrt(-1 + pow(e,2))*
+		        (-(sin(v1)/(1 + e*cos(v1))) + sin(v2)/(1 + e*cos(v2)))))/2.0;
+
+	double velocityAreaPerSecond = Orbit::calc_velocity_area_per_sec(a, mass, e);
+
+	if(velocityAreaPerSecond != 0)
+		return area / velocityAreaPerSecond;
+	else
+		return 0;
+}
+
+vector3d Orbit::calc_velocity_to_transfer_orbit(double time, vector3d cur_pos, vector3d targ_pos, double mass) {
+	Orbit orb;
+
+	double rc = cur_pos.Length();
+	double rt = targ_pos.Length();
+
+	if(rc <= 0 || rt <= 0 || mass <= 0) {
+		return vector3d(0,0,0);
+	}
+
+	const double angle_to_go = asin((cur_pos.Cross(targ_pos)).Length()/rc/rt);
+	const double h = 0.001;
+	double v1, v2, e, a;
+
+	v1 = -M_PI + 0.001;
+
+	for(int i = 6; i >= 0; i--) {
+		v2 = v1 + angle_to_go;
+
+		e = (-rc + rt)/(rc*cos(v1) - rt*cos(v2));
+
+		a = (2*rc*rt*(cos(v1) - cos(v2))*(rc*cos(v1) - rt*cos(v2)))/
+		    (-pow(rc,2) + 4*rc*rt - pow(rt,2) + pow(rc,2)*cos(2*v1) -
+		      4*rc*rt*cos(v1)*cos(v2) + pow(rt,2)*cos(2*v2));
+
+		v1 = v1 - (timeToTravelTrajectorySegment(a, e, v1, v1 + angle_to_go, mass) - time)/
+				(timeToTravelTrajectorySegment(a, e, v1 + h/2, v1 + h/2 + angle_to_go, mass) -
+						timeToTravelTrajectorySegment(a, e, v1 - h/2, v1 - h/2 + angle_to_go, mass)  );
+	}
+
+	// AND NOW CALCULATE V
+
+}
