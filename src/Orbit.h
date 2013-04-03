@@ -14,7 +14,7 @@ public:
 
 	Orbit():
 		m_eccentricity(0.0),
-		m_semiMajorAxis(0.0),
+		m_semiLatusRectum(0.0),
 		m_orbitalPhaseAtStart(0.0),
 		m_velocityAreaPerSecond(0.0),
 		m_orient(matrix3x3d::Identity())
@@ -36,7 +36,8 @@ public:
 
 	// basic accessors
 	double GetEccentricity() const { return m_eccentricity; }
-	double GetSemiMajorAxis() const { return m_semiMajorAxis; }
+	double GetSemiMajorAxisB() const { return m_semiLatusRectum / (1-m_eccentricity*m_eccentricity); }
+	double GetSemiLatusRectum() const { return m_semiLatusRectum; }
 	double GetOrbitalPhaseAtStart() const { return m_orbitalPhaseAtStart; }
 	const matrix3x3d &GetPlane() const { return m_orient; }
 
@@ -46,7 +47,7 @@ private:
 	double MeanAnomalyAtTime(double time) const;
 
 	double m_eccentricity;
-	double m_semiMajorAxis;
+	double m_semiLatusRectum;
 	double m_orbitalPhaseAtStart; // 0 to 2 pi radians
 	/* dup " " --------------------------------------- */
 	double m_velocityAreaPerSecond; // seconds

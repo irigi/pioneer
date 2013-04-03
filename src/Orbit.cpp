@@ -48,7 +48,7 @@ static double calc_velocity_area_per_sec_gravpoint(double semiMajorAxis, double 
 	return M_PI * a2 * sqrt((eccentricity < 1.0) ? (1 - e2) : (e2 - 1.0)) / calc_orbital_period_gravpoint(semiMajorAxis, totalMass, bodyMass);
 }
 
-static void calc_position_from_mean_anomaly(const double M, const double e, const double a, double &cos_v, double &sin_v, double *r) {
+static void calc_position_from_mean_anomaly(const double M, const double e, const double p, double &cos_v, double &sin_v, double *r) {
 	// M is mean anomaly
 	// e is eccentricity
 	// a is semi-major axis
@@ -71,7 +71,7 @@ static void calc_position_from_mean_anomaly(const double M, const double e, cons
 
 		// heliocentric distance
 		if (r) {
-			*r = a * (1.0 - e*cos(E));
+			*r = p / (1.0 + e*cos(E));
 		}
 
 	} else { // parabolic or hyperbolic orbit
@@ -90,14 +90,14 @@ static void calc_position_from_mean_anomaly(const double M, const double e, cons
 		sin_v = (sqrt(e*e-1.0)*sh)/ (e*ch - 1.0);
 
 		if (r) { // heliocentric distance
-			*r = a * (e*ch - 1.0);
+			*r = p / (e*ch - 1.0);
 		}
 	}
 }
 
 double Orbit::TrueAnomalyFromMeanAnomaly(double MeanAnomaly) const {
 	double cos_v, sin_v;
-	calc_position_from_mean_anomaly(MeanAnomaly, m_eccentricity, m_semiMajorAxis, cos_v, sin_v, 0);
+	calc_position_from_mean_anomaly(MeanAnomaly, m_eccentricity, m_semiLatusRectum, cos_v, sin_v, 0);
 	return atan2(sin_v, cos_v);
 }
 
@@ -122,14 +122,14 @@ double Orbit::MeanAnomalyAtTime(double time) const {
 	if (e < 1.0) { // elliptic orbit
 		return 2.0*M_PI*time / Period() + m_orbitalPhaseAtStart;
 	} else {
-		return -2.0*time * m_velocityAreaPerSecond / (m_semiMajorAxis * m_semiMajorAxis * sqrt(e*e-1)) + m_orbitalPhaseAtStart;
+		return -2.0*time * m_velocityAreaPerSecond / (m_semiLatusRectum * m_semiLatusRectum * pow(e*e-1,-1.5)) + m_orbitalPhaseAtStart;
 	}
 }
 
 vector3d Orbit::OrbitalPosAtTime(double t) const
 {
 	double cos_v, sin_v, r;
-	calc_position_from_mean_anomaly(MeanAnomalyAtTime(t), m_eccentricity, m_semiMajorAxis, cos_v, sin_v, &r);
+	calc_position_from_mean_anomaly(MeanAnomalyAtTime(t), m_eccentricity, m_semiLatusRectum, cos_v, sin_v, &r);
 	return m_orient * vector3d(-cos_v*r, sin_v*r, 0);
 }
 
@@ -143,9 +143,9 @@ vector3d Orbit::EvenSpacedPosTrajectory(double t) const
 	double r;
 
 	if (e < 1.0) {
-		r = m_semiMajorAxis * (1 - e*e) / (1 + e*cos(v));
+		r = m_semiLatusRectum / (1 + e*cos(v));
 	} else {
-		r = m_semiMajorAxis * (e*e - 1) / (1 + e*cos(v));
+		r = m_semiLatusRectum / (1 + e*cos(v));
 
 		// planet is in infinity
 		const double ac = acos(-1/e);
@@ -165,7 +165,7 @@ vector3d Orbit::EvenSpacedPosTrajectory(double t) const
 
 double Orbit::Period() const {
 	if(m_eccentricity < 1 && m_eccentricity >= 0) {
-		return M_PI * m_semiMajorAxis * m_semiMajorAxis * sqrt(1 - m_eccentricity * m_eccentricity)/ m_velocityAreaPerSecond;
+		return M_PI * m_semiLatusRectum * m_semiLatusRectum * pow(1 - m_eccentricity * m_eccentricity, -1.5)/ m_velocityAreaPerSecond;
 	} else { // hyperbola.. period makes no sense, should not be used
 		assert(0);
 		return 0;
@@ -174,30 +174,26 @@ double Orbit::Period() const {
 
 vector3d Orbit::Apogeum() const {
 	if(m_eccentricity < 1) {
-		return m_semiMajorAxis * (1 + m_eccentricity) * (m_orient * vector3d(1,0,0));
+		return m_semiLatusRectum / (1 - m_eccentricity) * (m_orient * vector3d(1,0,0));
 	} else {
 		return vector3d(0,0,0);
 	}
 }
 
 vector3d Orbit::Perigeum() const {
-	if(m_eccentricity < 1) {
-		return m_semiMajorAxis * (1 - m_eccentricity) * (m_orient * vector3d(-1,0,0));
-	} else {
-		return m_semiMajorAxis * (m_eccentricity - 1) * (m_orient * vector3d(-1,0,0));
-	}
+	return m_semiLatusRectum / (1 + m_eccentricity) * (m_orient * vector3d(-1,0,0));
 }
 
 void Orbit::SetShapeAroundBarycentre(double semiMajorAxis, double totalMass, double bodyMass, double eccentricity)
 {
-	m_semiMajorAxis = semiMajorAxis;
+	m_semiLatusRectum = semiMajorAxis * (1 - eccentricity*eccentricity);
 	m_eccentricity = eccentricity;
 	m_velocityAreaPerSecond = calc_velocity_area_per_sec_gravpoint(semiMajorAxis, totalMass, bodyMass, eccentricity);
 }
 
 void Orbit::SetShapeAroundPrimary(double semiMajorAxis, double centralMass, double eccentricity)
 {
-	m_semiMajorAxis = semiMajorAxis;
+	m_semiLatusRectum = semiMajorAxis * (1 - eccentricity*eccentricity);
 	m_eccentricity = eccentricity;
 	m_velocityAreaPerSecond = calc_velocity_area_per_sec(semiMajorAxis, centralMass, eccentricity);
 }
@@ -222,7 +218,7 @@ Orbit Orbit::FromBodyState(const vector3d &pos, const vector3d &vel, double cent
 
 	if (is_zero_general(centralMass) || is_zero_general(r_now) || is_zero_general(v_now) || is_zero_general(EE) || (ang.z*ang.z/LLSqr > 1.0)) {
 		ret.m_eccentricity = 0.0;
-		ret.m_semiMajorAxis = 0.0;
+		ret.m_semiLatusRectum = 0.0;
 		ret.m_velocityAreaPerSecond = 0.0;
 		ret.m_orbitalPhaseAtStart = 0.0;
 		ret.m_orient =  matrix3x3d::Identity();
@@ -259,11 +255,7 @@ Orbit Orbit::FromBodyState(const vector3d &pos, const vector3d &vel, double cent
 		double off = 0, ccc = 0;
 		matrix3x3d mat;
 
-		if (ret.m_eccentricity < 1) {
-			off = ret.m_semiMajorAxis*(1 - ret.m_eccentricity*ret.m_eccentricity) - r_now;
-		} else {
-			off = ret.m_semiMajorAxis*(-1 + ret.m_eccentricity*ret.m_eccentricity) - r_now;
-		}
+		off = ret.m_semiLatusRectum - r_now;
 
 		// correct sign of offset is given by sign pos.Dot(vel) (heading towards apohelion or perihelion?]
 		off = Clamp(off/(r_now * ret.m_eccentricity), -1 + 1e-6,1 - 1e-6);
