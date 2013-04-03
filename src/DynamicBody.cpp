@@ -27,6 +27,8 @@ DynamicBody::DynamicBody(): ModelBody()
 	m_externalForce = vector3d(0.0);		// do external forces calc instead?
 	m_lastForce = vector3d(0.0);
 	m_lastTorque = vector3d(0.0);
+	m_lastOrbit = Orbit();
+	m_ComputeOrbitLazy_ModuloIterator = 0;
 }
 
 void DynamicBody::SetForce(const vector3d &f)
@@ -260,7 +262,7 @@ bool DynamicBody::OnCollision(Object *o, Uint32 flags, double relVel)
 }
 
 // return parameters for orbit of any body, gives both elliptic and hyperbolic trajectories
-Orbit DynamicBody::ComputeOrbit() const {
+Orbit DynamicBody::ComputeOrbit() {
 	const Frame *frame = this->GetFrame()->GetNonRotFrame();
 	const double mass = frame->GetSystemBody()->GetMass();
 
@@ -268,5 +270,15 @@ Orbit DynamicBody::ComputeOrbit() const {
 	const vector3d vel = this->GetVelocityRelTo(frame);
 	const vector3d pos = this->GetPositionRelTo(frame);
 
-	return Orbit::FromBodyState(pos, vel, mass);
+	m_lastOrbit = Orbit::FromBodyState(pos, vel, mass);
+	return m_lastOrbit;
+}
+
+// return ComputeOrbit once in a while, return last computed orbit otherwise
+Orbit DynamicBody::ComputeOrbitLazy() {
+	m_ComputeOrbitLazy_ModuloIterator++;
+	if(m_ComputeOrbitLazy_ModuloIterator % 5 == 1)
+		return ComputeOrbit();
+
+	return m_lastOrbit;
 }

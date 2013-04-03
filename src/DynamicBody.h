@@ -49,7 +49,8 @@ public:
 
 	virtual void PostLoadFixup(Space *space);
 
-	Orbit ComputeOrbit() const;
+	Orbit ComputeOrbit();
+	Orbit ComputeOrbitLazy();
 protected:
 	virtual void Save(Serializer::Writer &wr, Space *space);
 	virtual void Load(Serializer::Reader &rd, Space *space);
@@ -72,6 +73,9 @@ private:
 	// for time accel reduction fudge
 	vector3d m_lastForce;
 	vector3d m_lastTorque;
+
+	Orbit m_lastOrbit;
+	unsigned int m_ComputeOrbitLazy_ModuloIterator;
 };
 
 #endif /* _DYNAMICBODY_H */
